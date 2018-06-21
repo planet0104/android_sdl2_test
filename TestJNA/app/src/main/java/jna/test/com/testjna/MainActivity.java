@@ -16,13 +16,15 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.Buffer;
+import java.util.ArrayList;
 
 import static android.os.Environment.DIRECTORY_PICTURES;
 
 public class MainActivity extends Activity {
     static final String TAG = MainActivity.class.getSimpleName();
     public interface Game extends Library {
-        int start(String libpath);
+        Buffer start();
         float test();
         void end();
     }
@@ -32,15 +34,6 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        //System.load("SDL2");
-        //System.loadLibrary("SDL2");
-//        String path=getApplicationContext().getPackageResourcePath();
-//        System.out.println("String path=getApplicationContext().getPackageResourcePath()="+path);
-//        File file = new File("/data/data/jna.test.com.testjna/lib/");
-//        String[] list = file.list();
-//        for(String l : list){
-//            System.out.println("文件:"+l);
-//        }
         requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 0);
         File file = Environment.getExternalStoragePublicDirectory(DIRECTORY_PICTURES);
         File bmp = new File(file, "test.bmp");
@@ -75,43 +68,8 @@ public class MainActivity extends Activity {
 
         Log.d(TAG, "Build.CPU_ABI="+ Build.CPU_ABI);
 
-//        NativeLibrary.addSearchPath("main", file_dir.getAbsolutePath());
-//        f = NativeLibrary.getInstance("main").getFile();
-//        Log.d(TAG, "f="+f);
         final Game game = Native.loadLibrary("main", Game.class);
-        Log.d(TAG, "step1.");
-        float get = game.test();
-        Log.d(TAG, "get="+get);
-        Log.d(TAG, "哈哈哈>>>>>>>>>>>111");
-        try{
-            Log.d(TAG, "哈哈哈>>>>>>>>>>>2222");
-            int result = game.start(so.getAbsolutePath());
-            Log.d(TAG, "result>>>>>>>>>>>"+result);
-        }catch (Throwable e){
-            Log.d(TAG, "哈哈哈>>>>>>>>>>>4444");
-            e.printStackTrace();
-        }finally {
-            Log.d(TAG, "呵呵呵呵 Finally!!!");
-        }
-        Log.d(TAG, "哈哈哈>>>>>>>>>>>5555");
-
-
-//        File file = new File(getExternalCacheDir(), "libcompute.so");
-//        try {
-//            InputStream fis = getAssets().open("libcompute.so");
-//            inputStreamToFile(fis, file);
-//
-//            Log.d(TAG, "file.exist="+file.exists()+" path="+file.getAbsolutePath()+" absolute="+file.isAbsolute());
-//
-//            Game compute = Native.loadLibrary(file.getAbsolutePath(), Game.class);
-//
-//            //Game compute = Native.loadLibrary("compute", Game.class);
-//
-//            Log.d("HelloJNA","计算结果:"+compute.compute(1.0f));
-//        } catch (Throwable e) {
-//            Log.e("helloJNA", "出错:"+e.getMessage());
-//            e.printStackTrace();
-//        }
+        Log.w(TAG, "start==="+game.start());
     }
 
     public void inputStreamToFile(InputStream ins,File file) throws IOException {

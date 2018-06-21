@@ -1,7 +1,10 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
-
+#[cfg(target_os = "android")]
+extern crate android_log_sys;
+#[cfg(target_os = "android")]
+use android_log_sys::{__android_log_print, LogPriority};
 extern crate num;
 extern crate libloading;
 #[macro_use]
@@ -67,55 +70,79 @@ export PATH=$PATH:~/ndk-standalone-21-aarch64/bin
 
  */
 
+fn log(tag:&str, text:&str){
+    if cfg!(target_os = "android"){
+        #[cfg(target_os = "android")]{
+            let tag = CString::new(tag).unwrap();
+            let text = CString::new(text).unwrap();
+            unsafe{ __android_log_print(LogPriority::DEBUG as i32, tag.as_ptr(), text.as_ptr()); }
+        }
+    }else{
+        println!("{}: {}", tag, text);
+    }
+}
+
+//返回字符串
+// CString::new("呵呵呵OK.").unwrap().into_raw() as *mut i8
+//返回buffer
+//
+
 //cargo run --manifest-path ..\android_sdl2_test\Cargo.toml
 #[no_mangle]
-pub fn start() ->i32 {
-
-    let mut window: *mut SDL_Window = unsafe{ ::std::mem::uninitialized() };
-    let mut renderer: *mut SDL_Renderer = unsafe{ ::std::mem::uninitialized() };
-    let ret = unsafe{(SDL2.SDL_CreateWindowAndRenderer)(0, 0, 0, &mut window, &mut renderer)};
-    if ret < 0 {
-        println!("SDL_CreateWindowAndRenderer Error!");
-        return -100;
-    }
+pub fn start() -> *mut i8{
+    log("Main", "程序启动!");
+    let rs = String::from("哈喽");
+    // let mut window: *mut SDL_Window = unsafe{ ::std::mem::uninitialized() };
+    // let mut renderer: *mut SDL_Renderer = unsafe{ ::std::mem::uninitialized() };
+    // let ret = unsafe{(SDL2.SDL_CreateWindowAndRenderer)(0, 0, 0, &mut window, &mut renderer)};
+    // if ret < 0 {
+    //     log("Main", "SDL_CreateWindowAndRenderer Error!");
+    //     return ::std::ptr::null_mut();
+    // }
 
     //let surface = Surface::new(64, 64, PixelFormatEnum::RGB24).unwrap();
     let masks_result = PixelFormatEnum::RGB24.into_masks();
     if masks_result.is_err(){
-        return 101;
+        return ::std::ptr::null_mut();
     }
     let masks = masks_result.unwrap();
     let surface = unsafe { (SDL2.SDL_CreateRGBSurface)(0, 400, 400, masks.bpp as c_int, masks.rmask, masks.gmask, masks.bmask, masks.amask) };
     let renderer = unsafe { (SDL2.SDL_CreateSoftwareRenderer)(surface) };
     let ret = unsafe { (SDL2.SDL_SetRenderDrawColor)(renderer, 0, 0, 0, 255) };
     if ret != 0 {
-        return 102;
+        return ::std::ptr::null_mut();
     }
     unsafe { (SDL2.SDL_RenderClear)(renderer) };
     let ret = unsafe { (SDL2.SDL_SetRenderDrawColor)(renderer, 255, 210, 0, 255) };
     if ret != 0 {
-        return 102;
+        return ::std::ptr::null_mut();
     }
     let ret = unsafe { (SDL2.SDL_RenderFillRect)(renderer, &SDL_Rect::new(10, 10, 30, 30)) };
     if ret != 0 {
-        return 103;
+        return ::std::ptr::null_mut();
     }
     unsafe { (SDL2.SDL_RenderPresent)(renderer) };
 
     //保存文件
-    //let path_c = CString::new("/storage/emulated/0/Pictures/sdl_android_test.bmp").unwrap();
-    let path_c = CString::new("sdl_android_test.bmp").unwrap();
+    let path = if cfg!(target_os = "android"){"/storage/emulated/0/Pictures/sdl_android_test.bmp"}else{
+            "sdl_android_test.bmp"
+    };
+    let path_c = CString::new(path).unwrap();
+    //let path_c = CString::new().unwrap();
     let mode_c = CString::new("wb").unwrap();
-    let file = unsafe { (SDL2.SDL_RWFromFile)(path_c.as_ptr() as *const c_char, mode_c.as_ptr() as *const c_char) };
+    let file = unsafe { (SDL2.SDL_RWFromFile)(path_c.as_ptr(), mode_c.as_ptr()) };
 
     if file.is_null() {
-        return 104;
+        return ::std::ptr::null_mut();
     }
 
     let ret = unsafe { (SDL2.SDL_SaveBMP_RW)(surface, file, 0) };
     if ret != 0 {
-        return 105;
+        return ::std::ptr::null_mut();
     }
-
-    0
+    //bmp.push(222);
+    //CString::new("呵呵呵OK.").unwrap().into_raw() as *mut i8
+    let mut a = vec![8, 1, 2, 3];
+    println!("{:?}", a);
+    a.as_mut_ptr()
 }
