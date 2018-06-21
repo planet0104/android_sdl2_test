@@ -11,9 +11,6 @@ mod sdl2;
 use libloading::Library;
 use std::ffi::CString;
 use std::os::raw::{c_int, c_char};
-//linux安装:
-//sudo apt-get install libsdl2-dev
-//export PATH=$PATH:/home/planet/ndk-standalone-21-aarch64/bin/
 use sdl2_sys::*;
 use sdl2::*;
 
@@ -47,6 +44,28 @@ pub fn test() ->f32 {
     println!("test ok.");
     1024.0
 }
+//linux安装:
+//sudo apt-get install libsdl2-dev
+//export PATH=$PATH:/home/planet/ndk-standalone-21-aarch64/bin/
+
+/*
+下载安卓NDK
+./make-standalone-toolchain.sh --platform=android-21 --toolchain=aarch64-linux-android --install-dir=/home/planet/ndk-standalone-21-aarch64 --verbose
+
+sudo apt-get install libc6-i386 lib32z1 lib32stdc++6
+sudo apt install build-essential
+
+配置cargo
+nano ~/.cargo/config
+
+[target.aarch64-linux-android]
+ar = "/home/planet/ndk-standalone-21-aarch64/bin/aarch64-linux-android-ar"
+linker = "/home/planet/ndk-standalone-21-aarch64/bin/aarch64-linux-android-gcc"
+
+配置环境变量
+export PATH=$PATH:~/ndk-standalone-21-aarch64/bin
+
+ */
 
 //cargo run --manifest-path ..\android_sdl2_test\Cargo.toml
 #[no_mangle]
