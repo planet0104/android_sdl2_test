@@ -26,6 +26,8 @@ pub struct LibSDL2<'a>{
     pub SDL_CreateSoftwareRenderer: Symbol<'a, fn_SDL_CreateSoftwareRenderer>,
     pub SDL_RenderFillRect: Symbol<'a, fn_SDL_RenderFillRect>,
     pub SDL_SaveBMP_RW: Symbol<'a, fn_SDL_SaveBMP_RW>,
+    pub SDL_RWFromMem: Symbol<'a, fn_SDL_RWFromMem>,
+    pub SDL_RenderReadPixels: Symbol<'a, fn_SDL_RenderReadPixels>,
 }
 
 impl <'a> LibSDL2<'a>{
@@ -80,6 +82,13 @@ pub type fn_SDL_RenderFillRect = unsafe extern fn(renderer: *mut SDL_Renderer,
 pub type fn_SDL_SaveBMP_RW = unsafe extern fn(surface: *mut SDL_Surface, dst: *mut SDL_RWops,
                           freedst: ::std::os::raw::c_int)
      -> ::std::os::raw::c_int;
+pub type fn_SDL_RWFromMem = unsafe extern fn(mem: *mut ::std::os::raw::c_void,
+                         size: ::std::os::raw::c_int) -> *mut SDL_RWops;
+pub type fn_SDL_RenderReadPixels = unsafe extern fn(renderer: *mut SDL_Renderer,
+                                rect: *const SDL_Rect, format: Uint32,
+                                pixels: *mut ::std::os::raw::c_void,
+                                pitch: ::std::os::raw::c_int)
+     -> ::std::os::raw::c_int;
 
 lazy_static!{
     pub static ref SDL2:LibSDL2<'static> = LibSDL2{
@@ -103,6 +112,8 @@ lazy_static!{
         SDL_CreateSoftwareRenderer: unsafe{ LIB.get(b"SDL_CreateSoftwareRenderer").unwrap() },
         SDL_RenderFillRect: unsafe{ LIB.get(b"SDL_RenderFillRect").unwrap() },
         SDL_SaveBMP_RW: unsafe{ LIB.get(b"SDL_SaveBMP_RW").unwrap() },
+        SDL_RWFromMem: unsafe{ LIB.get(b"SDL_RWFromMem").unwrap() },
+        SDL_RenderReadPixels: unsafe{ LIB.get(b"SDL_RenderReadPixels").unwrap() },
     };
 }
 

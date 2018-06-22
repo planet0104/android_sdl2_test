@@ -13,7 +13,7 @@ mod sdl2_sys;
 mod sdl2;
 use libloading::Library;
 use std::ffi::CString;
-use std::os::raw::{c_int, c_char};
+use std::os::raw::{c_int, c_char, c_void};
 use sdl2_sys::*;
 use sdl2::*;
 
@@ -89,9 +89,9 @@ fn log(tag:&str, text:&str){
 
 //cargo run --manifest-path ..\android_sdl2_test\Cargo.toml
 #[no_mangle]
-pub fn start() -> *mut i8{
+pub fn start() -> *mut u8{
     log("Main", "程序启动!");
-    let rs = String::from("哈喽");
+    //let rs = String::from("哈喽");
     // let mut window: *mut SDL_Window = unsafe{ ::std::mem::uninitialized() };
     // let mut renderer: *mut SDL_Renderer = unsafe{ ::std::mem::uninitialized() };
     // let ret = unsafe{(SDL2.SDL_CreateWindowAndRenderer)(0, 0, 0, &mut window, &mut renderer)};
@@ -124,25 +124,53 @@ pub fn start() -> *mut i8{
     unsafe { (SDL2.SDL_RenderPresent)(renderer) };
 
     //保存文件
-    let path = if cfg!(target_os = "android"){"/storage/emulated/0/Pictures/sdl_android_test.bmp"}else{
-            "sdl_android_test.bmp"
-    };
-    let path_c = CString::new(path).unwrap();
-    //let path_c = CString::new().unwrap();
-    let mode_c = CString::new("wb").unwrap();
-    let file = unsafe { (SDL2.SDL_RWFromFile)(path_c.as_ptr(), mode_c.as_ptr()) };
+    // let path = if cfg!(target_os = "android"){"/storage/emulated/0/Pictures/sdl_android_test.bmp"}else{
+    //         "sdl_android_test.bmp"
+    // };
+    // let path_c = CString::new(path).unwrap();
+    // //let path_c = CString::new().unwrap();
+    // let mode_c = CString::new("wb").unwrap();
+    // let file = unsafe { (SDL2.SDL_RWFromFile)(path_c.as_ptr(), mode_c.as_ptr()) };
 
-    if file.is_null() {
-        return ::std::ptr::null_mut();
-    }
+    // if file.is_null() {
+    //     return ::std::ptr::null_mut();
+    // }
 
-    let ret = unsafe { (SDL2.SDL_SaveBMP_RW)(surface, file, 0) };
+    let format = PixelFormatEnum::RGB24;
+    let pitch = 400 * format.byte_size_per_pixel(); // calculated pitch
+    let size = format.byte_size_of_pixels(400 * 400);
+    let mut pixels = Vec::with_capacity(size);
+    unsafe{ pixels.set_len(size); }
+
+    let ret = unsafe{ (SDL2.SDL_RenderReadPixels)(renderer, &SDL_Rect::new(0, 0, 400, 400), format as u32, pixels.as_mut_ptr(), pitch as i32) };
+    if ret == 0 { }
+
+    let mut data = vec![0; 400*400*4];
+    let buf:&mut [u8] = &mut data;
+    
+    let file = unsafe{ (SDL2.SDL_RWFromMem)(buf.as_ptr() as *mut c_void, buf.len() as i32) };
+    println!("size={}", unsafe{ (*file).size.unwrap()(file) });
+    let ret = unsafe { (SDL2.SDL_SaveBMP_RW)(surface, file, buf.len() as i32) };
     if ret != 0 {
         return ::std::ptr::null_mut();
     }
+    println!("size={}", unsafe{ (*file).size.unwrap()(file) });
+    
     //bmp.push(222);
     //CString::new("呵呵呵OK.").unwrap().into_raw() as *mut i8
-    let mut a = vec![8, 1, 2, 3];
+
+    let var1 = 999;
+    let raw_bytes: [u8; 4] = unsafe { std::mem::transmute(var1) };
+    for byte in &raw_bytes {
+        println!("{}", byte);
+    }
+
+    let mut a = vec![8, 8, 8, 9];
+    a.insert(0, raw_bytes[0]);
+    a.insert(1, raw_bytes[1]);
+    a.insert(2, raw_bytes[2]);
+    a.insert(3, raw_bytes[3]);
+    
     println!("{:?}", a);
     a.as_mut_ptr()
 }

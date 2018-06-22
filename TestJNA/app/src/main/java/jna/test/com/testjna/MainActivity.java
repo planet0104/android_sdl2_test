@@ -9,6 +9,7 @@ import android.util.Log;
 
 import com.sun.jna.Library;
 import com.sun.jna.Native;
+import com.sun.jna.Pointer;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -17,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.Buffer;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
 import static android.os.Environment.DIRECTORY_PICTURES;
@@ -24,7 +26,7 @@ import static android.os.Environment.DIRECTORY_PICTURES;
 public class MainActivity extends Activity {
     static final String TAG = MainActivity.class.getSimpleName();
     public interface Game extends Library {
-        Buffer start();
+        Pointer start();
         float test();
         void end();
     }
@@ -35,18 +37,6 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 0);
-        File file = Environment.getExternalStoragePublicDirectory(DIRECTORY_PICTURES);
-        File bmp = new File(file, "test.bmp");
-        Log.d(TAG, bmp.getAbsolutePath());
-        try {
-            FileOutputStream f = new FileOutputStream(bmp);
-            f.write(11);
-            f.flush();
-            f.close();
-            Log.d(TAG, "文件写入成功!");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
 
         //Native.loadLibrary()
         File file_dir = getFilesDir();
@@ -69,7 +59,15 @@ public class MainActivity extends Activity {
         Log.d(TAG, "Build.CPU_ABI="+ Build.CPU_ABI);
 
         final Game game = Native.loadLibrary("main", Game.class);
-        Log.w(TAG, "start==="+game.start());
+        Pointer pointer = game.start();
+        int len = pointer.getInt(0);
+        Log.d(TAG, "长度:"+len);
+        byte[] buffer = pointer.getByteArray(4, 4);
+        Log.d(TAG, "字节1==="+buffer[0]);
+        Log.d(TAG, "字节2==="+buffer[1]);
+        Log.d(TAG, "字节3==="+buffer[2]);
+        Log.d(TAG, "字节4==="+buffer[3]);
+
     }
 
     public void inputStreamToFile(InputStream ins,File file) throws IOException {
