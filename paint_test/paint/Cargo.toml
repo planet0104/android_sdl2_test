@@ -1,0 +1,23 @@
+[package]
+name = "paint"
+version = "0.1.0"
+authors = ["planet0104 <planet0104@gmail.com>"]
+
+[dependencies]
+#jni = "0.10.1"
+rand = "0.5.3"
+# lodepng = "2.1.5"
+
+image = "*"
+imageproc = "*"
+
+# [target.'cfg(target_os = "android")'.dependencies]
+# android_log-sys = "0.1.2"
+
+[profile.release]
+lto = true
+panic = 'abort'
+
+[lib]
+name = "paint"
+crate-type=["rlib", "cdylib"]

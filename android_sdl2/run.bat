@@ -1,1 +1,0 @@
-cargo run --manifest-path ..\android_sdl2_test\Cargo.toml

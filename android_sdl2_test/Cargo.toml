@@ -1,7 +1,0 @@
-[package]
-name = "android_sdl2_test"
-version = "0.1.0"
-authors = ["planet0104 <planet0104@gmail.com>"]
-
-[dependencies.android_sdl2]
-path = "../android_sdl2"

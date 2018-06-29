@@ -1,0 +1,46 @@
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+
+linux安装:
+sudo apt-get install libsdl2-dev
+export PATH=$PATH:/home/planet/ndk-standalone-21-aarch64/bin/
+
+
+下载安卓NDK
+./make-standalone-toolchain.sh --platform=android-21 --toolchain=aarch64-linux-android --install-dir=/home/planet/ndk-standalone-21-aarch64 --verbose
+./make-standalone-toolchain.sh --platform=android-21 --toolchain=arm-linux-androideabi --install-dir=/home/planet/ndk-standalone-21-arm --verbose
+
+sudo apt-get install libc6-i386 lib32z1 lib32stdc++6
+sudo apt install build-essential
+
+配置cargo
+nano ~/.cargo/config
+
+[target.aarch64-linux-android]
+ar = "/home/planet/ndk-standalone-21-aarch64/bin/aarch64-linux-android-ar"
+linker = "/home/planet/ndk-standalone-21-aarch64/bin/aarch64-linux-android-gcc"
+
+[target.arm-linux-androideabi]
+ar = "/home/planet/ndk-standalone-21-arm/bin/arm-linux-androideabi-ar"
+linker = "/home/planet/ndk-standalone-21-arm/bin/arm-linux-androideabi-gcc"
+
+配置环境变量
+export PATH=$PATH:~/ndk-standalone-21-aarch64/bin
+export PATH=$PATH:~/ndk-standalone-21-arm/bin
+
+
+libui-rs编译需要添加环境变量:
+C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin
+
+
+体积缩小:
+rustc src\lib.rs --crate-type cdylib -C lto
+
+[profile.release]
+lto = true
+panic = 'abort'
+
+[lib]
+name = "paint"
+crate-type=["rlib", "cdylib"]

@@ -1,0 +1,14 @@
+[package]
+name = "paint_test"
+version = "0.1.0"
+authors = ["planet0104 <planet0104@gmail.com>"]
+build = "build.rs"
+
+[dependencies]
+piston = "0.37.0"
+piston2d-graphics = "0.26.0"
+piston_window = "*"
+image = "*"
+
+[dependencies.paint]
+    path = "paint"
