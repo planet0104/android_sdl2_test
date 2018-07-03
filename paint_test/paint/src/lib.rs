@@ -8,6 +8,9 @@ use std::time::{Duration, Instant};
 extern crate image;
 extern crate imageproc;
 mod math;
+mod line;
+mod picture;
+use line::Line;
 use image::{Rgba, ImageOutputFormat, RgbaImage, DynamicImage};
 use imageproc::drawing::*;
 use imageproc::rect::Rect;
@@ -19,77 +22,6 @@ const MUTATION_RATE: f32 = 0.2;
 
 pub fn duration_to_milis(duration: &Duration) -> f64 {
     duration.as_secs() as f64 * 1000.0 + duration.subsec_nanos() as f64 / 1_000_000.0
-}
-
-#[derive(Debug, Copy, Clone)]
-struct Line{
-    x1: u32,
-    y1: u32,
-    x2: u32,
-    y2: u32
-}
-impl Line{
-    fn new(x1:u32, y1:u32, x2:u32, y2:u32) -> Line{ Line{x1, y1, x2, y2}  }
-}
-
-struct Picture{
-    width: u32,
-    height: u32,
-    image: Option<DynamicImage>,
-    lines: Vec<Line>,
-    fitness: f32,
-}
-impl Picture{
-    fn new(width: u32, height: u32, line_count: u32) -> Picture{
-        let mut rng = rand::thread_rng();
-        let mut lines = vec![];
-        for _ in 0..line_count{
-            let (x1, x2) = (rng.gen_range(0, width), rng.gen_range(0, width));
-            let (y1, y2) = (rng.gen_range(0, height), rng.gen_range(0, height));
-            lines.push(Line::new(x1, y1, x2, y2));
-        }
-        Picture{fitness:0.0,  lines, width, height, image:None}
-    }
-
-    fn render(&mut self){
-        let mut img = DynamicImage::new_rgba8(self.width, self.height);
-        draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(self.width, self.height), Rgba([255, 255, 255, 255]));
-        for line in &self.lines{
-            draw_line_segment_mut(
-                &mut img,
-                (line.x1 as f32, line.y1 as f32),
-                (line.x2 as f32, line.y2 as f32),
-                Rgba([0, 0, 0, 255]),
-            );
-        }
-        self.image = Some(img);
-    }
-
-    //计算适应分, 图像为白色背景, 黑色前景。
-    fn calc_fitness_score(&mut self, buffer:&RgbaImage) -> f32{
-        //将线条绘制成图片
-        self.render();
-        //对比图片像素
-        let test_buffer = self.image.as_ref().unwrap().to_rgba();
-        let mut target_pixels = buffer.pixels();
-        let mut test_pixels = test_buffer.pixels();
-        self.fitness = 0.0;
-        while let Some(pixel) = test_pixels.next(){
-            let target_pixel = target_pixels.next().unwrap();
-            if pixel[0] == target_pixel[0]{
-                self.fitness += 1.0;
-            }else{
-                self.fitness -= 1.0;
-            }
-        }
-        self.fitness
-    }
-
-    //变异
-    fn mutate(&mut self){
-        //[变长]、[变短]、[旋转]、[平移]、[替换]
-        
-    }
 }
 
 struct Populations{
@@ -222,23 +154,23 @@ pub fn process(path: &str) -> Vec<u8> {
     */
     println!("像素:{}x{} 满分:{}", buffer.width(), buffer.height(), buffer.width()*buffer.height());
 
-    let group_size = 100;
-    let line_count = 300;
-    let mut populations = Populations::new(group_size, buffer.width(), buffer.height(), line_count);
+    // let group_size = 100;
+    // let line_count = 300;
+    // let mut populations = Populations::new(group_size, buffer.width(), buffer.height(), line_count);
 
-    let now = Instant::now();
+    // let now = Instant::now();
     
-    populations.epoch(&buffer);
+    // populations.epoch(&buffer);
 
-    println!("耗时:{}ms", duration_to_milis(&now.elapsed()));
+    // println!("耗时:{}ms", duration_to_milis(&now.elapsed()));
 
-    for picture in &mut populations.pictures{
-        println!("score={}", picture.fitness);
-    }
+    // for picture in &mut populations.pictures{
+    //     println!("score={}", picture.fitness);
+    // }
 
     let mut img = DynamicImage::new_rgba8(200, 200);
     draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(200, 200), Rgba([255, 255, 255, 255]));
-    let mut points = vec![(50.0, 50.0), (50.0, 100.0)];
+    let mut points = vec![(0.0, 0.0), (0.0, 1.0)];
     draw_line_segment_mut(
         &mut img,
         (points[0].0, points[0].1),
@@ -249,11 +181,12 @@ pub fn process(path: &str) -> Vec<u8> {
     //创建一个转换矩阵
     let mut matrix = Matrix2D::new_identity();
     //变比
-    matrix.scale(1.0, 2.0);
+    matrix.scale(50.0, 50.0);
     //旋转
-    //matrix.rotate(10.0);
+    matrix.rotate(3.1415/2.0);
     //转换
-    //matrix.translate(60.0, 60.0);
+    matrix.translate(50.0, 50.0);
+    
 
     println!("{:?}", points);
     matrix.transform(&mut points);
