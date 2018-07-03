@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["planet0104 <planet0104@gmail.com>"]
 
 [dependencies]
+log = "0.4.3"
+env_logger = "0.5.10"
+#num_cpus = "1.8.0"
 #jni = "0.10.1"
 rand = "0.5.3"
 # lodepng = "2.1.5"

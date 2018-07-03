@@ -87,12 +87,12 @@ impl Matrix2D{
         self.multiply(mat);
     }
 
-    pub fn transform(&self, points:&mut Vec<(f32, f32)>){
+    pub fn transform(&self, points:&[(f32, f32)], trans:&mut[(f32, f32)]){
         for i in 0..points.len() {
 			let x = (self.matrix._11*points[i].0) + (self.matrix._21*points[i].1) + (self.matrix._31);
 			let y = (self.matrix._12*points[i].0) + (self.matrix._22*points[i].1) + (self.matrix._32);
-			points[i].0 = x;
-			points[i].1 = y;
+			trans[i].0 = x;
+			trans[i].1 = y;
 		}
     }
 }

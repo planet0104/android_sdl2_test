@@ -1,24 +1,29 @@
 //#[cfg(target_os="android")]
 //extern crate android_log_sys;
 extern crate rand;
-
-use rand::prelude::*;
-use std::time::{Duration, Instant};
-
+#[macro_use]
+extern crate log;
+extern crate env_logger;
+//extern crate num_cpus;
 extern crate image;
 extern crate imageproc;
 mod math;
 mod line;
 mod picture;
-use line::Line;
-use image::{Rgba, ImageOutputFormat, RgbaImage, DynamicImage};
-use imageproc::drawing::*;
-use imageproc::rect::Rect;
+mod dna;
+use rand::prelude::*;
+use std::time::{Duration, Instant};
+use std::sync::mpsc::channel;
+use log::LevelFilter;
+use picture::Picture;
+use image::{ImageOutputFormat, RgbaImage, DynamicImage};
 use std::path::Path;
-use math::Matrix2D;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
-const CROSSOVER_RATE: f32 = 0.7;
+const CROSSOVER_RATE: f32 = 0.99;
 const MUTATION_RATE: f32 = 0.2;
+const GROUP_SIZE: u32 = 24*8+16;// 8个线程
 
 pub fn duration_to_milis(duration: &Duration) -> f64 {
     duration.as_secs() as f64 * 1000.0 + duration.subsec_nanos() as f64 / 1_000_000.0
@@ -27,36 +32,26 @@ pub fn duration_to_milis(duration: &Duration) -> f64 {
 struct Populations{
     pictures: Vec<Picture>,
     total_fitness: f32,
+    generations: u32,
+    target: RgbaImage,
 }
 
 impl Populations{
-    fn new(size: u32, width:u32, height: u32, lines: u32) -> Populations{
+    fn new(size: u32, buffer: RgbaImage, lines: u32) -> Populations{
         //初始化随机群体
         let mut pictures = vec![];
         for _ in 0..size{
-            pictures.push(Picture::new(width, height, lines));
+            pictures.push(Picture::new(buffer.width(), buffer.height(), lines));
         }
-        Populations{pictures, total_fitness:0.0 }
+        Populations{pictures, total_fitness:0.0, generations:0, target: buffer }
     }
 
     //杂交
-    fn crossover(&self, mum:&Picture, dad:&Picture) -> (Picture, Picture) {
+    fn crossover(mum:&Picture, dad:&Picture) -> (Picture, Picture) {
         let mut rng = thread_rng();
         let c:f32 = rng.gen();
         if c>CROSSOVER_RATE {
-            (Picture{
-                fitness: 0.0,
-                width: mum.width,
-                height: mum.height,
-                lines: mum.lines.clone(),
-                image: None,
-            }, Picture{
-                fitness: 0.0,
-                width: dad.width,
-                height: dad.height,
-                lines: dad.lines.clone(),
-                image: None,
-            })
+            (Picture::from_picture(mum), Picture::from_picture(dad))
         }else{
             //确定交叉点
             let index1 = rng.gen_range(0, mum.lines.len());
@@ -75,19 +70,17 @@ impl Populations{
                     baby2.push(dad.lines[i]);
                 }
             }
-            (Picture{
-                fitness: 0.0,
-                width: mum.width,
-                height: mum.height,
-                lines: baby1,
-                image: None,
-            }, Picture{
-                fitness: 0.0,
-                width: dad.width,
-                height: dad.height,
-                lines: baby2,
-                image: None,
-            })
+            (Picture::from_lines(mum.width, mum.height, baby1),
+            Picture::from_lines(dad.width, dad.height, baby2))
+        }
+    }
+
+    fn mutate(pic:&mut Picture){
+        for line in &mut pic.lines{
+            //突变每一个线条
+            if rand::random::<f32>() < MUTATION_RATE{
+                line.mutate(pic.width, pic.height);   
+            }
         }
     }
 
@@ -109,98 +102,119 @@ impl Populations{
         &self.pictures[selected_picture]
     }
 
-    fn epoch(&mut self, buffer:&RgbaImage){
-        //计算个体的适应分
-        self.total_fitness = 0.0;
+    //计算适应分
+    fn calc_fitness(&mut self, buffer:&RgbaImage){
         for picture in &mut self.pictures{
             picture.calc_fitness_score(buffer);
+        }
+    }
+
+    fn epoch(&mut self){
+        //计算总适应分
+        self.total_fitness = 0.0;
+        for picture in &mut self.pictures{
             self.total_fitness += picture.fitness;
         }
+
         //按照得分排序
         self.pictures.sort_by(|a, b| b.fitness.partial_cmp(&a.fitness).unwrap());
-        //精英选择
-
-        //赌轮选择
+        info!("代数:{} 最高分:{} 匹配度:{}%", self.generations, self.pictures[0].fitness, (self.pictures[0].fitness as f32/(self.target.width()*self.target.height()) as f32)*100.0);
+        //新群体
         let mut new_pop = vec![];
-        while new_pop.len() < self.pictures.len(){
-            //选择父母
-            let mum = self.roulette_wheel_selection();
-            let dad = self.roulette_wheel_selection();
-            //杂交
-            let (baby1, baby2) = self.crossover(mum, dad);
-            //变异
+        //16个精英
+        new_pop.push(Picture::from_picture(&self.pictures[0]));
+        new_pop.push(Picture::from_picture(&self.pictures[0]));
+        new_pop.push(Picture::from_picture(&self.pictures[0]));
+        new_pop.push(Picture::from_picture(&self.pictures[0]));
+        new_pop.push(Picture::from_picture(&self.pictures[1]));
+        new_pop.push(Picture::from_picture(&self.pictures[1]));
+        new_pop.push(Picture::from_picture(&self.pictures[1]));
+        new_pop.push(Picture::from_picture(&self.pictures[1]));
+        new_pop.push(Picture::from_picture(&self.pictures[2]));
+        new_pop.push(Picture::from_picture(&self.pictures[2]));
+        new_pop.push(Picture::from_picture(&self.pictures[2]));
+        new_pop.push(Picture::from_picture(&self.pictures[2]));
+        new_pop.push(Picture::from_picture(&self.pictures[3]));
+        new_pop.push(Picture::from_picture(&self.pictures[3]));
+        new_pop.push(Picture::from_picture(&self.pictures[3]));
+        new_pop.push(Picture::from_picture(&self.pictures[3]));
 
-            new_pop.push(baby1);
-            new_pop.push(baby2);
+        //let cpu_cores = num_cpus::get();
+        let (tx, rx) = channel();
+        let elite_count = new_pop.len();
+        let new_pop = Arc::new(Mutex::new(new_pop));
+        let thread_count = 8;
+        for _thread in 0..thread_count{
+            let buffer = self.target.clone();
+            //32*6+16=208
+            let child_count = (GROUP_SIZE-elite_count as u32)/thread_count;
+            let mut parents = vec![];
+            for _ in 0..child_count/2{
+                //每次生成两个孩子
+                parents.push(Picture::from_picture(self.roulette_wheel_selection()));
+                parents.push(Picture::from_picture(self.roulette_wheel_selection()));
+            }
+            let tx = tx.clone();
+            let new_pop_clone = new_pop.clone();
+            thread::spawn(move || {
+                let mut childs = vec![];
+                //每次生成两个孩子
+                while childs.len()<child_count as usize{
+                    let mum = parents.pop().unwrap();
+                    let dad = parents.pop().unwrap();
+                    //杂交
+                    let (mut baby1, mut baby2) = Populations::crossover(&mum, &dad);
+                    //变异
+                    Populations::mutate(&mut baby1);
+                    Populations::mutate(&mut baby2);
+                    //计算适应分
+                    baby1.calc_fitness_score(&buffer);
+                    baby2.calc_fitness_score(&buffer);
+
+                    childs.push(baby1);
+                    childs.push(baby2);
+                }
+                let mut new_pop = new_pop_clone.lock().unwrap();
+                new_pop.append(&mut childs);
+                if new_pop.len() == GROUP_SIZE as usize{
+                    let mut pops = vec![];
+                    pops.append(&mut new_pop);
+                    tx.send(pops).unwrap();
+                }
+            });
         }
+
+        //替换新的群体
+        self.pictures.clear();
+        self.pictures.append(&mut rx.recv().unwrap());
+        self.generations += 1;
     }
 }
 
 #[no_mangle]
 pub fn process(path: &str) -> Vec<u8> {
+    env_logger::Builder::from_default_env()
+        //.default_format_timestamp(false)
+        .filter_level(LevelFilter::Info)
+        .init();
+
     let img = image::open(&Path::new(path)).unwrap();
     let buffer = img.to_rgba();
 
-    /*
-    线条: x1,y1,x2,y2
-    图片: 由300个线条组成
-    群体: 100个图片组成
-
-    适应分: 逐个检查像素, 匹配+1, 不匹配-1
-    选择: 赌轮选择/精英选择
-    杂交: 置换杂交/两点杂交
-    变异: 对个体中的某些线条进行 [变长]、[变短]、[旋转]、[位移]、[或替换为新的随机线条]
-
-    */
-    println!("像素:{}x{} 满分:{}", buffer.width(), buffer.height(), buffer.width()*buffer.height());
-
-    // let group_size = 100;
-    // let line_count = 300;
-    // let mut populations = Populations::new(group_size, buffer.width(), buffer.height(), line_count);
-
-    // let now = Instant::now();
+    info!("像素:{}x{} 满分:{}", buffer.width(), buffer.height(), buffer.width()*buffer.height());
     
-    // populations.epoch(&buffer);
+    let line_count = 450;
+    let mut populations = Populations::new(GROUP_SIZE, buffer, line_count);
 
-    // println!("耗时:{}ms", duration_to_milis(&now.elapsed()));
-
-    // for picture in &mut populations.pictures{
-    //     println!("score={}", picture.fitness);
-    // }
-
-    let mut img = DynamicImage::new_rgba8(200, 200);
-    draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(200, 200), Rgba([255, 255, 255, 255]));
-    let mut points = vec![(0.0, 0.0), (0.0, 1.0)];
-    draw_line_segment_mut(
-        &mut img,
-        (points[0].0, points[0].1),
-        (points[1].0, points[1].1),
-        Rgba([0, 0, 0, 255]),
-    );
-
-    //创建一个转换矩阵
-    let mut matrix = Matrix2D::new_identity();
-    //变比
-    matrix.scale(50.0, 50.0);
-    //旋转
-    matrix.rotate(3.1415/2.0);
-    //转换
-    matrix.translate(50.0, 50.0);
-    
-
-    println!("{:?}", points);
-    matrix.transform(&mut points);
-    println!("{:?}", points);
-
-    draw_line_segment_mut(
-        &mut img,
-        (points[0].0, points[0].1),
-        (points[1].0, points[1].1),
-        Rgba([255, 0, 0, 255]),
-    );
+    let now = Instant::now();
+    populations.calc_fitness(&img.to_rgba());
+    for _ in 0..1000{
+        populations.epoch();
+    }
+    info!("最高分数:{} 耗时:{}ms", populations.pictures[0].fitness, duration_to_milis(&now.elapsed()));
 
     let mut buffer = vec![];
-    let _ = img.write_to(&mut buffer, ImageOutputFormat::BMP);
+    let _ = populations.pictures[0].image.write_to(&mut buffer, ImageOutputFormat::BMP);
     buffer
 }
 
