@@ -1,85 +1,133 @@
+use rand;
+use rand::Rng;
 use imageproc::drawing::*;
 use image::{Rgba, RgbaImage, DynamicImage};
-use ::line::Line;
 use imageproc::rect::Rect;
+use std::f32;
+use std::clone::Clone;
+use rand::thread_rng;
+use std::time::{Duration, Instant};
+use ::duration_to_milis;
 
+#[derive(Copy)]
 pub struct Picture{
-    pub width: u32,
-    pub height: u32,
-    pub image: DynamicImage,
-    pub lines: Vec<Line>,
+    //[(R, G, B, alpha, x, y, radius), ...]
+    gene: [(u8, u8, u8, u8, i32, i32, i32); 100],
     pub fitness: f32,
 }
+
+impl Clone for Picture {
+    fn clone(&self) -> Picture { *self }
+}
+
 impl Picture{
-    pub fn new(width: u32, height: u32, line_count: u32) -> Picture{
-        let mut lines = vec![];
-        for _ in 0..line_count{
-            let mut line = Line::new();
-            line.randomize(width, height);
-            lines.push(line);
+    pub fn new() -> Picture{
+        let mut dna = Picture{
+            gene: [(0, 0, 0, 0, 0, 0, 0); 100],
+            fitness: 0.01
+        };
+        let mut rng = thread_rng();
+        for i in 0..dna.len(){
+            //RGB
+            dna.gene[i].0 = rng.gen_range(0, 256) as u8;
+            dna.gene[i].1 = rng.gen_range(0, 256) as u8;
+            dna.gene[i].2 = rng.gen_range(0, 256) as u8;
+            //alpha
+            dna.gene[i].3 = rng.gen_range(0, 256) as u8;
+            //x,y
+            dna.gene[i].4 = rng.gen_range(0, 300);
+            dna.gene[i].5 = rng.gen_range(0, 300);
+            // radius value
+            dna.gene[i].6 = rng.gen_range(0, 150);
         }
-        Picture{fitness:0.0,  lines, width, height, image:DynamicImage::new_rgba8(width, height)}
+        dna
     }
 
-    pub fn from_picture(pic: &Picture) ->Picture{
-        Picture{
-            fitness: pic.fitness,
-            width: pic.width,
-            height: pic.height,
-            lines: pic.lines.clone(),
-            image: pic.image.clone(),
+    //绘图
+    pub fn render(&mut self, width:u32, height:u32) -> DynamicImage{
+        //let now = Instant::now();
+        let mut image = DynamicImage::new_rgba8(width, height);
+        draw_filled_rect_mut(&mut image, Rect::at(0, 0).of_size(width, height), Rgba([255, 255, 255, 255]));
+        for ch in self.gene.iter_mut(){
+            //let diameter = ch.6*2;
+            if ch.6 == 0{
+                ch.6 = 1;
+            }
+            let rect = Rect::at(ch.4, ch.5).of_size(ch.6 as u32, ch.6 as u32);
+            draw_filled_rect_mut(&mut image, rect, Rgba([ch.0, ch.1, ch.2, ch.3]));
+            //draw_filled_circle_mut(&mut image, (ch.4, ch.5), ch.6, Rgba([ch.0, ch.1, ch.2, ch.3]));
         }
+        //info!("render 耗时:{}ms", duration_to_milis(&now.elapsed()));
+        image
     }
 
-    pub fn from_lines(width: u32, height: u32, lines: Vec<Line>) ->Picture{
-        Picture{
-            fitness: 0.0,
-            width: width,
-            height: height,
-            lines: lines,
-            image: DynamicImage::new_rgba8(width, height),
-        }
-    }
-
-    //线条坐标转换
-    fn world_transform(&mut self){
-        for line in &mut self.lines{
-            line.world_transform();
-        }
-    }
-
-    //绘制
-    pub fn render(&mut self){
-        self.world_transform();
-        //白色背景
-        draw_filled_rect_mut(&mut self.image, Rect::at(0, 0).of_size(self.width, self.height), Rgba([255, 255, 255, 255]));
-        for line in &self.lines{
-            //黑色线条
-            let verts = line.verts_trans();
-            draw_line_segment_mut(
-                &mut self.image,
-                (verts[0].0, verts[0].1),
-                (verts[1].0, verts[1].1),
-                Rgba([0, 0, 0, 255]),
-            );
-        }
-    }
-
-    //计算适应分, 图像为白色背景, 黑色前景。
-    pub fn calc_fitness_score(&mut self, buffer:&RgbaImage) -> f32{
-        //将线条绘制成图片
-        self.render();
-        //对比图片像素
-        let test_buffer = self.image.to_rgba();
-        let mut target_pixels = buffer.pixels();
+    pub fn calc_fitness(&mut self, target: &RgbaImage){
+        let (width, height) = (target.width(), target.height());
+        
+        let image = self.render(width, height);
+        let test_buffer = image.to_rgba();
         let mut test_pixels = test_buffer.pixels();
-        self.fitness = 0.0;
+        let mut target_pixels = target.pixels();
         while let Some(pixel) = test_pixels.next(){
             let target_pixel = target_pixels.next().unwrap();
-            if pixel[0] == target_pixel[0]{
-                self.fitness += 1.0;
+            //获取每隔颜色的差值
+            let dr = target_pixel[0] as f32 - pixel[0] as f32;
+            let dg = target_pixel[1] as f32 - pixel[1] as f32;
+            let db = target_pixel[2] as f32 - pixel[2] as f32;
+            let da = target_pixel[3] as f32 - pixel[3] as f32;
+            //计算颜色之间的3D空间距离
+            let pixel_fitness = dr * dr + dg * dg + db * db + da * da;
+            self.fitness += pixel_fitness;
+        }
+        self.fitness = 1.0/self.fitness.log(f32::consts::E);
+    }
+
+    //杂交(单点)
+    pub fn crossover(&self, crossover_rate:f32, dad:&Picture) -> (Picture, Picture) {
+        let mum = self;
+        let mut rng = thread_rng();
+        if rng.gen::<f32>()>crossover_rate {
+            (*mum, *dad)
+        }else{
+            let mut baby1 = mum.gene.clone();
+            let mut baby2 = dad.gene.clone();
+            //确定杂交点
+            let cp = rng.gen_range(0, mum.gene.len());
+            for i in cp..self.gene.len(){
+                baby1[i] = dad.gene[i];
+                baby2[i] = mum.gene[i];
+            }
+            (Picture{
+                gene: baby1,
+                fitness: 0.01
+            },
+            Picture{
+                gene: baby2,
+                fitness: 0.01
+            })
+        }
+    }
+
+    pub fn mutate(&mut self, mutation_rate:f32){
+        let mut rng = rand::thread_rng();
+        for i in 0..self.gene.len(){
+            if rng.gen::<f32>() < mutation_rate{
+                //RGB
+                self.gene[i].0 = rng.gen_range(0, 256) as u8;
+                self.gene[i].1 = rng.gen_range(0, 256) as u8;
+                self.gene[i].2 = rng.gen_range(0, 256) as u8;
+                //alpha
+                self.gene[i].3 = rng.gen_range(0, 256) as u8;
+                //x,y
+                self.gene[i].4 = rng.gen_range(0, 340);
+                self.gene[i].5 = rng.gen_range(0, 340);
+                // radius value
+                self.gene[i].6 = rng.gen_range(0, 50);
             }
         }
-        self.fitness
+    }
+
+    pub fn len(&self) -> usize{
+        self.gene.len()
     }
 }

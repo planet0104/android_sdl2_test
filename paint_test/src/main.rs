@@ -7,7 +7,7 @@ use piston::window::WindowSettings;
 use piston_window::*;
 
 fn main(){
-    let buffer:Vec<u8> = paint::process("head.png");
+    let buffer:Vec<u8> = paint::process("mono.png");
     let img = image::load_from_memory(&buffer).unwrap();
 
     let mut window: PistonWindow =
