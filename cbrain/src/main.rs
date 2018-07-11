@@ -1,4 +1,6 @@
+extern crate rand;
 mod cbrain;
+mod ga;
 use cbrain::Interpreter;
 use std::str;
 use std::time::{Duration, Instant};
@@ -14,7 +16,7 @@ fn main() {
     cbrain.run(&mut vec![], &mut output, hello);
     cbrain.run(&mut vec![], &mut output, ascii);
     cbrain.run(&mut vec![2014], &mut output, easter);
-    
+
     println!("{}", output);
 }
 

@@ -69,8 +69,8 @@ pub struct Interpreter {
     length: usize,
     tmp: isize,
     scale: i32,
-    tracer: i32,
-    tracing: i32,
+    // tracer: i32,
+    // tracing: i32,
 
     //char
     code: Vec<char>, //65536字节
@@ -90,8 +90,8 @@ impl Interpreter {
             length: 0,
             tmp: 0,
             scale: 0,
-            tracer: 0,
-            tracing: 0,
+            // tracer: 0,
+            // tracing: 0,
             code: vec![' '; SIZE],
         }
     }
@@ -160,14 +160,14 @@ impl Interpreter {
 
         self.q = 0;
         while self.q < self.length {
-            if self.tracer != 0 && self.code[self.q] == ' ' {
-                self.tmp = self.code[self.q] as isize;
-                eprintln!(
-                    "[{} at {} was {}, ",
-                    self.tmp as u8 as char, self.p, self.a[self.p]
-                );
-                self.tracing = 1;
-            }
+            // if self.tracer != 0 && self.code[self.q] == ' ' {
+            //     self.tmp = self.code[self.q] as isize;
+            //     eprintln!(
+            //         "[{} at {} was {}, ",
+            //         self.tmp as u8 as char, self.p, self.a[self.p]
+            //     );
+            //     self.tracing = 1;
+            // }
             match self.code[self.q] {
                 /* bf */
                 '+' => {
@@ -251,28 +251,28 @@ impl Interpreter {
                     self.scale = 0;
                 }
                 /* cbrain */
-                '{' => {
-                    self.tmp = 1;
-                    while self.tmp != 0 && self.q < self.length {
-                        self.q += 1;
-                        if self.code[self.q] == '}' {
-                            self.tmp -= 1;
-                        }
-                        if self.code[self.q] == '{' {
-                            self.tmp += 1;
-                        }
-                    }
-                    if self.tmp != 0 {
-                        self.e(9);
-                        return 0;
-                    }
-                    self.scale = 0;
-                }
-                '}' => {
-                    self.e(10);
-                    self.scale = 0;
-                    return 0;
-                }
+                // '{' => {
+                //     self.tmp = 1;
+                //     while self.tmp != 0 && self.q < self.length {
+                //         self.q += 1;
+                //         if self.code[self.q] == '}' {
+                //             self.tmp -= 1;
+                //         }
+                //         if self.code[self.q] == '{' {
+                //             self.tmp += 1;
+                //         }
+                //     }
+                //     if self.tmp != 0 {
+                //         self.e(9);
+                //         return 0;
+                //     }
+                //     self.scale = 0;
+                // }
+                // '}' => {
+                //     self.e(10);
+                //     self.scale = 0;
+                //     return 0;
+                // }
                 '*' => {
                     self.a[self.p] *= 10;
                     self.scale = 0;
@@ -438,10 +438,14 @@ impl Interpreter {
                     }
                     self.scale = 0;
                 }
-                'n' | '#' | 'b' => {
+                'n' => {
                     //输出当前单元格的整数
                     output.push_str(&format!("{}", self.a[self.p]));
                 }
+                // '#' | 'b' => {
+                //     //输出当前单元格的整数
+                //     output.push_str(&format!("{}", self.a[self.p]));
+                // }
                 'x' => {
                     //交换当前和前一个单元格
                     self.tmp = self.a[self.p];
@@ -480,7 +484,7 @@ impl Interpreter {
                     self.a[self.p] = self.memreg;
                     self.scale = 0;
                 }
-                '"' => {}
+                // '"' => {}
                 '?' => {
                     //display current memory cells
                     let mut cell = String::new();
@@ -512,20 +516,20 @@ impl Interpreter {
                     );
                     self.scale = 0;
                 }
-                't' => {
-                    //toggle step trace
-                    self.tracer = if self.tracer != 0 { 0 } else { 1 };
-                    self.scale = 0;
-                }
+                // 't' => {
+                //     //toggle step trace
+                //     self.tracer = if self.tracer != 0 { 0 } else { 1 };
+                //     self.scale = 0;
+                // }
                 'g' => return (self.p + 1) as isize,
                 'q' => return -1,
                 _ => self.scale = 0,
             }
 
-            if self.tracing != 0 && !(self.code[self.q] == ' ') {
-                eprintln!(" after {} is {}]\n", self.p, self.a[self.p]);
-                self.tracing = 0;
-            }
+            // if self.tracing != 0 && !(self.code[self.q] == ' ') {
+            //     eprintln!(" after {} is {}]\n", self.p, self.a[self.p]);
+            //     self.tracing = 0;
+            // }
 
             self.q += 1;
         }
