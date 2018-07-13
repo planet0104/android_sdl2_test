@@ -10,53 +10,31 @@
 //变异: 插入并删除开头或者末尾, 删除并在开头或者末尾插入，循环左移/右移，替换
 
 pub mod genome;
+pub mod genalg;
 use self::genome::Genome;
 
-pub struct GenAlg {
-    pop: Vec<Genome>,
-    pop_size: usize,     //人口数
-    mutation_rate: f64,  //变异率 0.05~0.3
-    crossover_rate: f64, //杂交率 0.7
+pub struct Params{
+    pub pop_size: usize,
+    pub chromo_length: usize,
+    pub num_elite: usize,
+    pub num_copies_elite: usize,
+    pub num_thread: usize, //线程数
+    pub mutation_rate: f64,  //变异率 0.05~0.3
+    pub crossover_rate: f64, //杂交率 0.7
+    pub calc_fitness: fn(genome:&Genome) -> f64,
 }
 
-impl GenAlg {
-    pub fn new(
-        pop_size: usize,
-        mutation_rate: f64,
-        crossover_rate: f64,
-        chromo_length: usize,
-    ) -> GenAlg {
-        let mut pop = vec![];
-        for _ in 0..pop_size {
-            pop.push(Genome::new(chromo_length));
-        }
-
-        GenAlg{
-            pop_size,
-            pop,
-            mutation_rate,
-            crossover_rate
+impl Clone for Params {
+    fn clone(&self) -> Params {
+        Params {
+            pop_size: self.pop_size,
+            chromo_length: self.chromo_length,
+            num_elite: self.num_elite,
+            num_copies_elite: self.num_copies_elite,
+            num_thread: self.num_thread,
+            mutation_rate: self.mutation_rate,
+            crossover_rate: self.crossover_rate,
+            calc_fitness: self.calc_fitness,
         }
     }
-
-    //精英选择
-    pub fn grab_n_best(&self, n: usize, num_copies: usize, pop:&mut Vec<Genome>){
-        for ibest in 0..n{
-            for _ in 0..num_copies{
-                pop.push(self.pop[self.pop_size-1- ibest].clone())
-            }
-        }
-    }
-
-    //适应性分数变比排名，将人群按适应性分数的升序排序，随后根据它的位置给出一个适应性分数.
-    pub fn fitness_scale_rank(&mut self){
-        let fitness_multiplier = 1.0;
-        for i in 0..self.pop_size{
-            self.pop[i].fitness = i as f64 * fitness_multiplier;
-        }
-        //重新计算选择时的参数
-
-    }
-
-    pub fn 
 }

@@ -69,11 +69,12 @@ pub struct Interpreter {
     length: usize,
     tmp: isize,
     scale: i32,
-    // tracer: i32,
-    // tracing: i32,
+    tracer: i32,
+    tracing: i32,
 
     //char
     code: Vec<char>, //65536字节
+    iteration_count: u64,
 }
 
 impl Interpreter {
@@ -90,13 +91,15 @@ impl Interpreter {
             length: 0,
             tmp: 0,
             scale: 0,
-            // tracer: 0,
-            // tracing: 0,
+            tracer: 0,
+            tracing: 0,
             code: vec![' '; SIZE],
+            iteration_count: 0,
         }
     }
 
-    pub fn run(&mut self, input: &mut Vec<isize>, output: &mut String, program: &str) -> isize {
+    pub fn run(&mut self, input: &mut Vec<isize>, output: &mut String, program: &str, max_iteration_count:u64) -> isize {
+        self.iteration_count = 0;
         self.length = program.len();
         let bytes = program.as_bytes();
 
@@ -160,14 +163,14 @@ impl Interpreter {
 
         self.q = 0;
         while self.q < self.length {
-            // if self.tracer != 0 && self.code[self.q] == ' ' {
-            //     self.tmp = self.code[self.q] as isize;
-            //     eprintln!(
-            //         "[{} at {} was {}, ",
-            //         self.tmp as u8 as char, self.p, self.a[self.p]
-            //     );
-            //     self.tracing = 1;
-            // }
+            if self.tracer != 0 && self.code[self.q] == ' ' {
+                self.tmp = self.code[self.q] as isize;
+                eprintln!(
+                    "[{} at {} was {}, ",
+                    self.tmp as u8 as char, self.p, self.a[self.p]
+                );
+                self.tracing = 1;
+            }
             match self.code[self.q] {
                 /* bf */
                 '+' => {
@@ -226,6 +229,12 @@ impl Interpreter {
                 /* pbrain */
                 '(' => {
                     //ptable[单元格的内容]=当前代码指针
+
+                    //检查指针是否超出
+                    if self.a[self.p] as usize > self.ptable.len(){
+                        self.e(13);
+                        return 0;
+                    }
                     self.ptable[self.a[self.p] as usize] = self.q as isize;
                     //跳到过程结束
                     self.q = self.t[self.q];
@@ -242,7 +251,14 @@ impl Interpreter {
                     //evaluate procedure with label matching current cell value
                     self.s[self.sp] = self.q; //代码指针入栈
                     self.sp += 1; //堆栈指针+1
-                                  //判断指针是否为空
+                    
+                    //判断指针是否越界
+                    if self.a[self.p] as usize>self.ptable.len() {
+                        self.e(2);
+                        return 0;
+                    }
+
+                    //判断指针是否为空
                     if self.ptable[self.a[self.p] as usize] < 0 {
                         self.e(2);
                         return 0;
@@ -251,28 +267,28 @@ impl Interpreter {
                     self.scale = 0;
                 }
                 /* cbrain */
-                // '{' => {
-                //     self.tmp = 1;
-                //     while self.tmp != 0 && self.q < self.length {
-                //         self.q += 1;
-                //         if self.code[self.q] == '}' {
-                //             self.tmp -= 1;
-                //         }
-                //         if self.code[self.q] == '{' {
-                //             self.tmp += 1;
-                //         }
-                //     }
-                //     if self.tmp != 0 {
-                //         self.e(9);
-                //         return 0;
-                //     }
-                //     self.scale = 0;
-                // }
-                // '}' => {
-                //     self.e(10);
-                //     self.scale = 0;
-                //     return 0;
-                // }
+                '{' => {
+                    self.tmp = 1;
+                    while self.tmp != 0 && self.q < self.length {
+                        self.q += 1;
+                        if self.code[self.q] == '}' {
+                            self.tmp -= 1;
+                        }
+                        if self.code[self.q] == '{' {
+                            self.tmp += 1;
+                        }
+                    }
+                    if self.tmp != 0 {
+                        self.e(9);
+                        return 0;
+                    }
+                    self.scale = 0;
+                }
+                '}' => {
+                    self.e(10);
+                    self.scale = 0;
+                    return 0;
+                }
                 '*' => {
                     self.a[self.p] *= 10;
                     self.scale = 0;
@@ -360,6 +376,11 @@ impl Interpreter {
                     }
                     //compute modulus of previous cell by current cell into previous cell and retreat
                     self.p -= 1;
+                    //被除数不能为0
+                    if self.a[self.p + 1]==0{
+                        self.e(12);
+                        return 0;
+                    }
                     self.a[self.p] %= self.a[self.p + 1];
                     self.scale = 0;
                 }
@@ -369,6 +390,10 @@ impl Interpreter {
                         return 0;
                     }
                     self.p -= 1;
+                    if self.a[self.p + 1]>=64{
+                        self.e(14);
+                        return 0;
+                    }
                     self.a[self.p] >>= self.a[self.p + 1];
                     self.scale = 0;
                 }
@@ -378,6 +403,10 @@ impl Interpreter {
                         return 0;
                     }
                     self.p -= 1;
+                    if self.a[self.p + 1]>=64{
+                        self.e(14);
+                        return 0;
+                    }
                     self.a[self.p] <<= self.a[self.p + 1];
                     self.scale = 0;
                 }
@@ -438,15 +467,17 @@ impl Interpreter {
                     }
                     self.scale = 0;
                 }
-                'n' => {
+                'n' | '#' | 'b' => {
                     //输出当前单元格的整数
                     output.push_str(&format!("{}", self.a[self.p]));
                 }
-                // '#' | 'b' => {
-                //     //输出当前单元格的整数
-                //     output.push_str(&format!("{}", self.a[self.p]));
-                // }
                 'x' => {
+                    //如果当前指针为0, 报错
+                    if self.p == 0{
+                        self.e(3);
+                        return 0;
+                    }
+
                     //交换当前和前一个单元格
                     self.tmp = self.a[self.p];
                     self.a[self.p] = self.a[self.p - 1];
@@ -484,7 +515,7 @@ impl Interpreter {
                     self.a[self.p] = self.memreg;
                     self.scale = 0;
                 }
-                // '"' => {}
+                '"' => {}
                 '?' => {
                     //display current memory cells
                     let mut cell = String::new();
@@ -516,47 +547,57 @@ impl Interpreter {
                     );
                     self.scale = 0;
                 }
-                // 't' => {
-                //     //toggle step trace
-                //     self.tracer = if self.tracer != 0 { 0 } else { 1 };
-                //     self.scale = 0;
-                // }
+                't' => {
+                    //toggle step trace
+                    self.tracer = if self.tracer != 0 { 0 } else { 1 };
+                    self.scale = 0;
+                }
                 'g' => return (self.p + 1) as isize,
                 'q' => return -1,
                 _ => self.scale = 0,
             }
 
-            // if self.tracing != 0 && !(self.code[self.q] == ' ') {
-            //     eprintln!(" after {} is {}]\n", self.p, self.a[self.p]);
-            //     self.tracing = 0;
-            // }
+            if self.tracing != 0 && !(self.code[self.q] == ' ') {
+                eprintln!(" after {} is {}]\n", self.p, self.a[self.p]);
+                self.tracing = 0;
+            }
 
             self.q += 1;
+            self.iteration_count += 1;
+            if self.iteration_count > max_iteration_count{
+                return self.p as isize;
+            }
         }
 
         self.p as isize + 1
     }
 
+    pub fn iteration_count(&self) -> u64{
+        self.iteration_count
+    }
+
     fn e(&self, i: i32) {
         match i {
-            2 => eprintln!(
-                "调用未定义的程序 ({}) with {} at {} of cbrain",
-                self.a[self.p], self.p, self.q
-            ),
-            3 => eprintln!(
-                "pointer too far {} at {} of cbrain",
-                if self.p > 0 { "right" } else { "left" },
-                self.q
-            ),
-            4 => eprintln!("unmatched '[' at byte {} of cbrain", self.s[self.sp]),
-            5 => eprintln!("unmatched ']' at byte {} of cbrain", self.q),
-            6 => eprintln!("unmatched '(' at byte {} of cbrain", self.s[self.sp]),
-            7 => eprintln!("unmatched ')' at byte {} of cbrain", self.q),
-            8 => eprintln!("can't open cbrain"),
-            9 => eprintln!("unmatched '｛' at byte {} of cbrain", self.s[self.sp]),
-            10 => eprintln!("unmatched '｝' at byte {} of cbrain", self.q),
-            11 => eprintln!("unmatched '\"' at byte {} of cbrain", self.q),
-            12 => eprintln!("divide by zero at byte {} of cbrain", self.q),
+            // 2 => eprintln!(
+            //     "调用未定义的程序 ({}) with {} at {} of cbrain",
+            //     self.a[self.p], self.p, self.q
+            // ),
+            // 3 => eprintln!(
+            //     "pointer too far {} at {} of cbrain",
+            //     if self.p > 0 { "right" } else { "left" },
+            //     self.q
+            // ),
+            // 4 => eprintln!("unmatched '[' at byte {} of cbrain", self.s[self.sp]),
+            // 5 => eprintln!("unmatched ']' at byte {} of cbrain", self.q),
+            // 6 => eprintln!("unmatched '(' at byte {} of cbrain", self.s[self.sp]),
+            // 7 => eprintln!("unmatched ')' at byte {} of cbrain", self.q),
+            // 8 => eprintln!("can't open cbrain"),
+            // 9 => eprintln!("unmatched '｛' at byte {} of cbrain", self.s[self.sp]),
+            // 10 => eprintln!("unmatched '｝' at byte {} of cbrain", self.q),
+            // 11 => eprintln!("unmatched '\"' at byte {} of cbrain", self.q),
+            // 12 => eprintln!("divide by zero at byte {} of cbrain", self.q),
+            // 13 => eprintln!("ptable pointer too far"),
+            // 14 => eprintln!("循环移动越界"),
             _ => {}
         }
     }
