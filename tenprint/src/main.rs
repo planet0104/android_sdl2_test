@@ -1,10 +1,6 @@
-extern crate brainfuck;
 extern crate rand;
 
-mod context;
-use std::panic;
-use brainfuck::parser;
-use context::Context;
+mod pbrain;
 use std::time::{Duration, Instant};
 use rand::random;
 use std::sync::mpsc::channel;
@@ -12,52 +8,37 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::str;
 use rand::{thread_rng, Rng};
+use pbrain::PBrain;
+
 /*
-f64数组 代表genome(基因组)
-每个f64(8个字节 gene 基因)代表一条指令
+char数组 代表genome(基因组)
+每个char代表一条指令
 
 AI程序的工作原理如下:
 
-一个基因组由一个f64数组组成。
-每个基因对应Brainf-ck编程语言中的指令。
+一个基因组由一个char数组组成。
+每个基因对应pbrain编程语言中的指令。
 从一群随机基因组开始。
-将每个f64转换成相应的指令，编码成结果程序，并执行这个程序。
+将每个char转换成相应的指令，编码成结果程序，并执行这个程序。
 根据程序的控制台输出获取每个程序的适应分数，并对它们进行排名。
 使用赌轮选择，杂交和变异将最佳基因组配对在一起，以产生新一代。
 用新一代重复该过程，直到达到目标适应分数。
-
-解释指令集
-
-Brainf-ck由以下指令集组成：
-
-1   >   递增指针。
-2   <   减少指针。
-3   +   递增指针处的字节。
-3   -   减少指针处的字节。
-5   .   输出指针处的字节。
-6   ,   输入一个字节并将其存储在指针的字节中。
-7   [   如果指针处的字节为零，则跳过匹配]。
-8   ]   向后跳转到匹配[除非指针处的字节为零。
-
 */
 
-//const INSTRUCTION_SET:[u8] = ['>', '<', '+', '-', '.', ',', '[', ']'];
-const INSTRUCTION_SET:[char; 7] = ['>', '<', '+', '-', '.', '[', ']'];
+const INSTRUCTION_SET:[char; 11] = ['>', '<', '+', '-', '.', ',', '[', ']', '(', ')', ':'];
 
-const MUTATION_RATE: f64 = 0.02;
-const CROSSOVER_RATE: f64 = 0.3;
+const MUTATION_RATE: f64 = 0.09;//0.05~0.3
+const CROSSOVER_RATE: f64 = 0.6;//0.7
 const INITIAL_GENOME_SIZE: usize = 100;
 const NUM_ELITE: usize = 3;//精英选择个数
 const NUM_COPIES_ELITE: usize = 3; //每个精英复制数
-const NUM_THREAD: usize = 6;//线程数
+const NUM_THREAD: usize = 4;//线程数
 const POPULATION_SIZE: usize = 30*NUM_THREAD+NUM_ELITE*NUM_COPIES_ELITE;//人口数量
 
-const MAX_TICK:u64 = 10000;
-const MAX_LOOP:u64 = 5000;
+const MAX_ITERATION_COUNT:u64 = 1000;
 
 //基因组
 pub struct Genome {
-    out: String,
     fitness: f64,
     genes: Vec<char>,
 }
@@ -65,7 +46,6 @@ pub struct Genome {
 impl Genome {
     fn new() -> Genome{
         Genome{
-            out: String::new(),
             fitness: 1.0,
             genes: vec![]
         }
@@ -82,125 +62,51 @@ impl Genome {
             genes.push(*rng.choose(&INSTRUCTION_SET).unwrap());
         }
         Genome{
-            out: String::new(),
             fitness: 1.0,
             genes: genes
         }
     }
 
-    /*
-       通过插入，替换，删除，移位进行突变。
-       - 在基因组中选择一个索引。
-       - 如果插入，则在该位置插入一个变异位。 其余位向上移动一个索引。 最后一位被删除了。
-       - 如果替换，则在该位置设置变异位。
-       - 如果删除，所有位都在该位置向下移动。 在数组的末尾添加一个变异位。
-       - 如果移位，所有位都从位置0开始向上或向下移动。如果向上，则最后一位向前移动。 如果向下，第一位就会结束。
-     */
-    fn mutate(&mut self){
-
+    //变异
+    pub fn mutate(&mut self, mutation_rate: f64) {
+        let len = self.length();
         let mut rng = thread_rng();
-
-        let mut index = 0;
-
-        while index<self.length(){
-            if rng.gen::<f64>() < MUTATION_RATE{
-                //选择变异类型
-                let r = rng.gen::<f64>();
-                if r <= 0.25 {
-                    //插入突变
-                    self.genes.insert(index, *rng.choose(&INSTRUCTION_SET).unwrap());
-                    //删除开头或末尾的基因
-                    if self.length()>1{
-                        let up = rng.gen::<f64>() >= 0.5;
-                        if up{//删除末尾
-                            self.genes.pop();
-                        }else{//删除第一个
-                            self.genes.remove(0);
-                        }
-                    }
-                    //跳过插入的基因
-                    index += 1;
-                }else if r <= 0.5{
-                    //删除突变
-                    self.genes.remove(index);
-                    let up = rng.gen::<f64>() >= 0.5;
-                    let ch = *rng.choose(&INSTRUCTION_SET).unwrap();
-                    if up{//在开头插入
-                        self.genes.insert(0, ch);
-                    }else{//在末尾插入
-                        self.genes.push(ch);
-                    }
-                }else if r <= 0.75{
-                    //转移/旋转突变
-                    let up = random::<f64>() >= 0.5;
-                    if up{
-                        if let Some(last) = self.genes.pop(){
-                            self.genes.insert(0, last);
-                        }
-                    }else{
-                        // 1,2,3 => 2,3,1
-                        let first = self.genes.remove(0);
-                        self.genes.push(first);
-                    }
+        //每个基因进行变异
+        for i in 0..len {
+            if rng.gen::<f64>() < mutation_rate {
+                if rng.gen::<f64>() < 0.5 {
+                    //突变     
+                    self.genes[i] = *rng.choose(&INSTRUCTION_SET).unwrap();
                 }else{
-                    //替换突变
-                    self.genes[index] = *rng.choose(&INSTRUCTION_SET).unwrap();
+                    //旋转突变
+                    if rng.gen::<f64>() >= 0.5{
+                        self.genes.rotate_right(1);
+                    }else{
+                        self.genes.rotate_left(1);
+                    }
                 }
             }
-
-            //下一个基因
-            index += 1;
         }
 
-        //- 循环每个f64突变
-        //- 插入突变(随机插入一条指令)
-        //- 删除突变(随机删除一条指令)
-        //- 循环移位突变
-
-        // //替换
-        // for pos in 0..self.genes.len(){
-        //     if rng.gen::<f64>() < MUTATION_RATE{
-        //         self.genes[pos] = *rng.choose(&INSTRUCTION_SET).unwrap();
-        //     }
-        // }
-
-        // //插入
-        // if rng.gen::<f64>() < MUTATION_RATE{
-        //     let insert_pos =  
-        //     if self.length()==0{
-        //         0
-        //     }else{
-        //         rng.gen_range(0, self.length())
-        //     };
-            
-        //     self.genes.insert(insert_pos, *rng.choose(&INSTRUCTION_SET).unwrap());
-        // }
-
-        // //删除
-        // if rng.gen::<f64>() < MUTATION_RATE && self.length()>0{
-        //     let delete_pos = rng.gen_range(0, self.length());
-        //     self.genes.remove(delete_pos);
-        // }
-
-        // //循环移动
-        // if rng.gen::<f64>() < MUTATION_RATE && self.length()>0{
-        //     //转移/旋转突变
-        //     let up = rng.gen::<f64>() >= 0.5;
-        //     if up{
-        //         // 1,2,3 => 3,1,2
-        //         if let Some(last) = self.genes.pop(){
-        //             self.genes.insert(0, last);
-        //         }
-        //     }else{
-        //         // 1,2,3 => 2,3,1
-        //         let first = self.genes.remove(0);
-        //         self.genes.push(first);
+        //随机替换一段
+        // if rng.gen::<f64>() < mutation_rate {
+        //     let p1 = rng.gen_range(0, len);
+        //     let p2 = rng.gen_range(p1, len);
+        //     if p2-p1>0{
+        //         //生成一个或大或小的新基因片段
+        //         self.genes.splice(
+        //             p1..p2,
+        //             (0..rng.gen_range(0, (p2 - p1) * 2)).map(|_| rng.gen()),
+        //         );
         //     }
         // }
     }
 
-    fn crossover(&self, genome:&Genome) -> (Genome, Genome){
-        if random::<f64>()>CROSSOVER_RATE{
+    //杂交
+    pub fn crossover(&self, genome: &Genome, crossover_rate: f64) -> (Genome, Genome) {
+        let mut rng = thread_rng();
+
+        if random::<f64>()>crossover_rate{
             return (self.clone(), genome.clone());   
         }
 
@@ -211,20 +117,14 @@ impl Genome {
 
         if tp{
             //单点杂交: 从父母各取一个点，分别交换
-            let pos1 = (random::<f64>()*self.length() as f64) as usize;
-            let pos2 = (random::<f64>()*genome.length() as f64) as usize;
-            for i in 0..pos1{
-                child1.genes.push(self.genes[i]);
-            }
-            for i in 0..pos2{
-                child2.genes.push(genome.genes[i]);
-            }
-            for i in pos1..self.length(){
-                child2.genes.push(self.genes[i]);
-            }
-            for i in pos2..genome.length(){
-                child1.genes.push(genome.genes[i]);
-            }
+            let p1 = rng.gen_range(0, self.length());
+            let p2 = rng.gen_range(0, genome.length());
+            
+            child1.genes.extend_from_slice(&self.genes[0..p1]);
+            child1.genes.extend_from_slice(&genome.genes[p2..genome.length()]);
+
+            child2.genes.extend_from_slice(&genome.genes[0..p2]);
+            child2.genes.extend_from_slice(&self.genes[p1..self.length()]);
         }else{
             //两点杂交: 从父母各取两个点，交换中间的部分
             let mut p11 = (random::<f64>()*self.length() as f64) as usize;
@@ -242,98 +142,40 @@ impl Genome {
                 p22 = tmp;
             }
             //前段
-            for i in 0..p11{
-                child1.genes.push(self.genes[i]);
-            }
+            child1.genes.extend_from_slice(&self.genes[0..p11]);
             //中间段
-            for i in p21..p22{
-                child1.genes.push(genome.genes[i]);
-            }
+            child1.genes.extend_from_slice(&genome.genes[p21..p22]);
             //尾段
-            for i in p12..self.length(){
-                child1.genes.push(self.genes[i]);
-            }
+            child1.genes.extend_from_slice(&self.genes[p12..self.length()]);
 
             //child2同上
-            for i in 0..p21{
-                child2.genes.push(genome.genes[i]);
-            }
-            for i in p11..p12{
-                child2.genes.push(self.genes[i]);
-            }
-            for i in p22..genome.length(){
-                child2.genes.push(genome.genes[i]);
-            }
+            child2.genes.extend_from_slice(&genome.genes[0..p21]);
+            child2.genes.extend_from_slice(&self.genes[p11..p12]);
+            child2.genes.extend_from_slice(&genome.genes[p22..genome.length()]);
         }
 
         (child1, child2)
     }
 
-    fn to_bf(&self) -> String {
-        let mut bf = String::new();
+    fn to_program(&self) -> String {
+        let mut program = String::new();
         for c in &self.genes{
-            bf.push(*c);
+            program.push(*c);
         }
-        //println!("bf={}", bf);
-        bf
+        program
     }
 
-    fn run(&self) -> (String, u64, u64){
-        let mut result = (String::new(), MAX_TICK, MAX_LOOP);
-        let program = self.to_bf();
-        if program.contains("[]"){
-            return result;
-        }
-        if let Ok(block) = parser::parse(program.as_bytes()) {
-            match panic::catch_unwind(||{
-                let mut context = Context::new(MAX_TICK, MAX_LOOP);
-                context.run(&block);
-                (context.out, context.tick, context.loop_count)
-            }){
-                Ok((out, tick, loop_count)) =>{
-                    result = (out, tick, loop_count);
-                }
-                Err(err) => println!("出错:{:?}", err)
-            }
-        }
-        result
-    }
+    fn run(&self) -> (String, u64){
+        let mut result = (String::new(), MAX_ITERATION_COUNT);
+        let program = self.to_program();
 
-    fn calc_fitness_add(out:&str, target:&str){
-        // Adding
-        // if (Int32.TryParse(_console.ToString(), out value))
-        // {
-        //     Fitness += 256 - Math.Abs(value - (input1 + input2));
-        // }
-    }
-
-    fn calc_fitness_sub(){
-        // // Subtracting
-        // if (Int32.TryParse(_console.ToString(), out value))
-        // {
-        //     Fitness += 256 - Math.Abs(value - (input1 - input2));
-        // }
-    }
-
-    //反转字符串适应分函数
-    fn calc_fitness_reverse_string(out:&str, target:&str) -> f64{
-        let mut fitness = 0.0;
-        let out_bytes = out.as_bytes();
-        let target = target.as_bytes();
-        //匹配分
-        for i in 0..target.len() {
-            if out_bytes.len()>i{
-                fitness += 255.0 - (out_bytes[i] as f64 - target[target.len()-i-1] as f64).abs();
-            }
-            //输出短于target, 减分
+        let mut pbrain = PBrain::new(vec![], MAX_ITERATION_COUNT);
+        //println!("{}", program);
+        if let Ok(()) = pbrain.parse(program.chars()){
+            result = (pbrain.output().clone(), pbrain.iteration_count());
         }
-        if out_bytes.len()>target.len(){
-            //超出target的, 减分
-            for _ in target.len()..out_bytes.len(){
-                fitness -= 5.0;
-            }
-        }
-        fitness
+
+        result    
     }
 
     //输出字符串计算适应分函数
@@ -359,26 +201,33 @@ impl Genome {
 
     fn calc_fitness(&mut self, target: &str){
         self.fitness = 0.0;
-        let (out, tick, loop_count) = self.run();
-
-        //输出字符串计算适应分
-        self.fitness = Genome::calc_fitness_print_string(&out, target);
-        
-        self.out = out;
+        let program = self.to_program();
+        let mut pbrain = PBrain::new(vec![], MAX_ITERATION_COUNT);
+        if let Ok(()) = pbrain.parse(program.chars()){
+            //输出字符串计算适应分
+            self.fitness += Genome::calc_fitness_print_string(pbrain.output(), target);
+        }else{
+            self.fitness -= 9999.0;
+        }
 
         //执行时间越短， 适应分越高
-        self.fitness -= tick as f64/35.0;
-        self.fitness -= loop_count as f64/35.0;
+        self.fitness -= pbrain.iteration_count() as f64 * 5.0;
 
         //指令越多适应分越低
-        self.fitness -= self.to_bf().len() as f64/10.0;
+        self.fitness -= program.len() as f64/10.0;
+    }
+
+    pub fn from_genes(genes: Vec<char>) -> Genome {
+        Genome {
+            fitness: 0.0,
+            genes: genes,
+        }
     }
 }
 
 impl Clone for Genome {
     fn clone(&self) -> Genome {
         Genome{
-            out: String::new(),
             fitness: self.fitness,
             genes: self.genes.clone(),
         }
@@ -440,7 +289,7 @@ impl GA {
         if elapsed_ms>=1000.0{
             self.start_time = Instant::now();
             let out = self.populations[0].run();
-            println!("人口:{} 代数:{} 平均分:{} 最高分:{} out={:?} bf={}", self.populations.len(), self.generations, self.total_fitness/POPULATION_SIZE as f64, self.populations[0].fitness, out, self.populations[0].to_bf());
+            println!("人口:{} 代数:{} 平均分:{} 最高分:{} out={:?} bf={}", self.populations.len(), self.generations, self.total_fitness/POPULATION_SIZE as f64, self.populations[0].fitness, out, self.populations[0].to_program());
         }
         //新群体
         let mut new_pop = vec![];
@@ -449,28 +298,6 @@ impl GA {
             for _ in 0..NUM_COPIES_ELITE{
                 new_pop.push(self.populations[i].clone());
             }
-        }
-
-        while new_pop.len() < POPULATION_SIZE{
-            //每次生成两个孩子
-            let mum = &self.populations[self.roulette_selection()];
-            let dad = &self.populations[self.roulette_selection()];
-
-            //杂交
-            let (mut baby1, mut baby2) = mum.crossover(&dad);
-            //变异
-            baby1.mutate();
-            baby1.mutate();
-            //计算适应分
-            //println!("baby1开始计算适应分 {}", baby1.to_bf());
-            baby1.calc_fitness(&self.target);
-            //println!("baby1适应分计算完成.");
-            //println!("baby2开始计算适应分 {}", baby2.to_bf());
-            baby2.calc_fitness(&self.target);
-            //println!("baby2适应分计算完成.");
-
-            new_pop.push(baby1);
-            new_pop.push(baby2);
         }
         
         let (tx, rx) = channel();
@@ -495,10 +322,10 @@ impl GA {
                     let mum = parents.pop().unwrap();
                     let dad = parents.pop().unwrap();
                     //杂交
-                    let (mut baby1, mut baby2) = mum.crossover(&dad);
+                    let (mut baby1, mut baby2) = mum.crossover(&dad, CROSSOVER_RATE);
                     //变异
-                    baby1.mutate();
-                    baby1.mutate();
+                    baby1.mutate(MUTATION_RATE);
+                    baby1.mutate(MUTATION_RATE);
                     //计算适应分
                     baby1.calc_fitness(&target);
                     baby2.calc_fitness(&target);
@@ -530,15 +357,15 @@ fn main() {
     //reddit
     //>>--<-----+-----------------------------------------------+----------------------------------------------------------------------------------<--->-+----------.-------------.-..-++++++.+++++++++++.>>++<>
     //hello world
-    let target = "He!";
+    let target = "Hi!";
     //let target_fitness = target.len() as f64*255.0;
     let mut ga = GA::new(target);
     let now = Instant::now();
     while {
-        let (out, tick, loop_count) = ga.populations[0].run();
+        let (out, tick) = ga.populations[0].run();
         if out == target{
             let elapsed_ms = duration_to_milis(&now.elapsed());
-            println!("最终程序:{} 适应分:{} 结果:{} 耗时:{}ms tick={}, loop={}", ga.populations[0].to_bf(), ga.populations[0].fitness, out, elapsed_ms, tick, loop_count);
+            println!("generations={} 最终程序:{} 适应分:{} 结果:{} 耗时:{}ms tick={}", ga.generations, ga.populations[0].to_program(), ga.populations[0].fitness, out, elapsed_ms, tick);
             false
         }else{
             true
