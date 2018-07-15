@@ -84,6 +84,7 @@ pub struct PBrain{
     input: Vec<PbrainMemType>,
     iteration_count: u64,
     max_iteration_count: u64,
+    ins_count: u64,
 }
 
 impl PBrain{
@@ -95,7 +96,8 @@ impl PBrain{
             output: String::new(),
             input: input,
             iteration_count: 0,
-            max_iteration_count
+            max_iteration_count,
+            ins_count: 0,
         }
     }
 
@@ -104,6 +106,7 @@ impl PBrain{
     }
 
     pub fn parse<I>(&mut self, iter: I) -> Result<(), String> where I: Iterator<Item=char>{
+        self.ins_count = 0;
         let mut source_block = SourceBlock::new();
         //将指令从输入流复制到源块
         for ii in iter{
@@ -124,6 +127,7 @@ impl PBrain{
         self.iteration_count += 1;
 
         while ii<eos{
+            self.ins_count += 1;
             match block[ii]{
                 '+' => self.mem[self.mp] += 1,
                 '-' => self.mem[self.mp] -= 1,
@@ -220,8 +224,13 @@ impl PBrain{
         Ok(())
     }
 
-    pub fn iteration_count(&self) -> u64{
-        self.iteration_count
+    // pub fn iteration_count(&self) -> u64{
+    //     self.iteration_count
+    // }
+
+    //执行的指令个数
+    pub fn instruction_count(&self) -> u64{
+        self.ins_count
     }
 
     pub fn _loop(&mut self, block: &SourceBlock) -> Result<(), String>{
