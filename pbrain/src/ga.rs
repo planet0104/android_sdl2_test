@@ -4,7 +4,31 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use rand::{thread_rng, Rng};
 use ::INSTRUCTION_SET;
-use ::{PBrain, MAX_ITERATION_COUNT, calc_fitness};
+
+pub trait CalcFitnessClone: Send {
+    fn clone_box(&self) -> Box<CalcFitness>;
+}
+
+impl<T> CalcFitnessClone for T
+where
+    T: 'static + CalcFitness + Clone,
+{
+    fn clone_box(&self) -> Box<CalcFitness> {
+        Box::new(self.clone())
+    }
+}
+
+pub trait CalcFitness: CalcFitnessClone{
+    fn calc_fitness(&self, genome: &Genome) -> f64;
+    fn get_output(&self, genome: &Genome) -> String;
+    fn is_fitness_achieved(&self, genome:&Genome) -> bool;
+}
+
+impl Clone for Box<CalcFitness> {
+    fn clone(&self) -> Box<CalcFitness> {
+        self.clone_box()
+    }
+}
 
 pub struct Params{
     pub pop_size: usize,
@@ -14,6 +38,7 @@ pub struct Params{
     pub num_thread: usize, //线程数
     pub mutation_rate: f64,  //变异率 0.05~0.3
     pub crossover_rate: f64, //杂交率 0.7
+    pub fitness_calc: Box<CalcFitness>
 }
 
 impl Clone for Params {
@@ -26,6 +51,7 @@ impl Clone for Params {
             num_thread: self.num_thread,
             mutation_rate: self.mutation_rate,
             crossover_rate: self.crossover_rate,
+            fitness_calc: self.fitness_calc.clone()
         }
     }
 }
@@ -151,14 +177,8 @@ impl Genome {
         for c in &self.genes{
             program.push(*c);
         }
-        program
-    }
-
-    pub fn get_output(&self) -> String{
-        let program = self.to_program();
-        let mut pbrain = PBrain::new(vec![], MAX_ITERATION_COUNT);
-        let _ = pbrain.parse(program.chars());
-        pbrain.output().clone()
+        //删除死循环
+        program.replace("[]", "")
     }
 
     pub fn from_genes(genes: Vec<char>) -> Genome {
@@ -249,8 +269,8 @@ impl GA {
                     baby1.mutate(params.mutation_rate);
                     baby1.mutate(params.mutation_rate);
                     //计算适应分
-                    baby1.fitness = calc_fitness(&baby1);
-                    baby2.fitness =  calc_fitness(&baby2);
+                    baby1.fitness = params.fitness_calc.calc_fitness(&baby1);
+                    baby2.fitness =  params.fitness_calc.calc_fitness(&baby2);
 
                     childs.push(baby1);
                     childs.push(baby2);

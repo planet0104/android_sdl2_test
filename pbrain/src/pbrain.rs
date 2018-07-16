@@ -76,37 +76,79 @@ type Mem = Vec<PbrainMemType>;
 type SourceBlock = Vec<char>;
 type Procedures = HashMap<PbrainMemType, Vec<char>>;
 
+// pub trait ReadInput{
+//     fn read(&self) -> PbrainMemType;
+// }
+
 pub struct PBrain{
     mp: usize, //内存指针
     mem: Mem,
     procedures: Procedures,
-    output: String, //输出
-    input: Vec<PbrainMemType>,
+    output: Vec<PbrainMemType>, //输出
+    input: Box<FnMut(usize)->PbrainMemType>,
     iteration_count: u64,
     max_iteration_count: u64,
     ins_count: u64,
+    read_index: usize,
 }
 
 impl PBrain{
-    pub fn new(input: Vec<PbrainMemType>, max_iteration_count: u64) -> PBrain{
+    pub fn new(input: Box<FnMut(usize)->PbrainMemType>, max_iteration_count: u64) -> PBrain{
         PBrain{
             mp: 0,
             mem: vec![0],
             procedures: Procedures::new(),
-            output: String::new(),
+            output: vec![],
             input: input,
             iteration_count: 0,
             max_iteration_count,
             ins_count: 0,
+            read_index: 0,
         }
     }
 
-    pub fn output(&self) ->&String{
+    //输入一个0结尾的字符串
+    // pub fn input_str(input: Box<ReadInput>, max_iteration_count: u64) -> PBrain{
+    //     let mut input:Vec<PbrainMemType> = input.chars().map(|c| c as PbrainMemType).rev().collect();
+    //     input.insert(0, 0);
+    //     PBrain::new(input, max_iteration_count)
+    // }
+
+    // pub fn set_input_str(&mut self, input: &str){
+    //     self.input.clear();
+    //     self.input.push(0);
+    //     self.input.append(&mut (input.chars().map(|c| c as PbrainMemType).rev().collect()));
+    // }
+
+    // pub fn input(&self) -> &Vec<i32>{
+    //     &self.input
+    // }
+
+    pub fn output(&self) ->&Vec<PbrainMemType>{
         &self.output
+    }
+
+    //输出ascii
+    pub fn output_ascii(&self) -> String{
+        let mut output = String::new();
+        for i in &self.output{
+            output.push(*i as u8 as char);
+        }
+        output
+    }
+
+    //输出整数
+    pub fn output_i32(&self) -> String{
+        let mut output = String::new();
+        for i in &self.output{
+            output.push_str(&format!("{},", i));
+        }
+        output
     }
 
     pub fn parse<I>(&mut self, iter: I) -> Result<(), String> where I: Iterator<Item=char>{
         self.ins_count = 0;
+        self.read_index = 0;
         let mut source_block = SourceBlock::new();
         //将指令从输入流复制到源块
         for ii in iter{
@@ -144,15 +186,11 @@ impl PBrain{
                     self.mp -= 1;
                 }
                 '.' => {
-                    //self.output.push(from_u32(self.mem[self.mp] as u32).unwrap_or(' '));
-                    self.output.push(self.mem[self.mp] as u8 as char);
+                    self.output.push(self.mem[self.mp]);
                 }
                 ',' => {
-                    if let Some(i) = self.input.pop(){
-                        self.mem[self.mp] = i;
-                    }else{
-                        return Err(PBrain::get_error(5));
-                    }
+                    self.mem[self.mp] = (self.input)(self.read_index);
+                    self.read_index += 1;
                 }
                 '[' => {
                     //转到循环中的第一条指令

@@ -2,9 +2,11 @@ extern crate rand;
 
 mod pbrain;
 mod ga;
+mod fitness;
 use std::time::{Duration, Instant};
-use pbrain::PBrain;
-use ga::{GA, Params, Genome};
+use fitness::PrintFitnessFunction;
+use fitness::SortFitness;
+use ga::{GA, Params, CalcFitness};
 
 /*
 char数组 代表genome(基因组)
@@ -21,56 +23,22 @@ AI程序的工作原理如下:
 用新一代重复该过程，直到达到目标适应分数。
 */
 
-const INSTRUCTION_SET:[char; 11] = ['>', '<', '+', '-', '.', ',', '[', ']', '(', ')', ':'];
+//const INSTRUCTION_SET:[char; 11] = ['>', '<', '+', '-', '.', ',', '[', ']', '(', ')', ':'];
+const INSTRUCTION_SET:[char; 9] = ['>', '<', '.', ',', '[', ']', '(', ')', ':'];
 const MUTATION_RATE: f64 = 0.02;//0.05~0.3
 const CROSSOVER_RATE: f64 = 0.6;//0.7
 const INITIAL_GENOME_SIZE: usize = 200;
-const NUM_ELITE: usize = 4;//精英选择个数
-const NUM_COPIES_ELITE: usize = 3; //每个精英复制数
-const NUM_THREAD: usize = 4;//线程数
+const NUM_ELITE: usize = 3;//精英选择个数
+const NUM_COPIES_ELITE: usize = 2; //每个精英复制数
+const NUM_THREAD: usize = 8;//线程数
 const POPULATION_SIZE: usize = 30*NUM_THREAD+NUM_ELITE*NUM_COPIES_ELITE;//人口数量
 const MAX_ITERATION_COUNT:u64 = 1000;
 
-//目标字符串
-const TARGET:&str = "Hello World!";
-//const TARGET:&str = "Hello!";
-//const TARGET:&str = "Hi!";
-
-fn calc_fitness(genome: &Genome) -> f64{
-    let mut fitness = 0.0;
-    let program = genome.to_program();
-    let mut pbrain = PBrain::new(vec![], MAX_ITERATION_COUNT);
-    let target = TARGET.as_bytes();
-    if let Ok(()) = pbrain.parse(program.chars()){
-        //输出字符串计算适应分
-        let out_bytes = pbrain.output().as_bytes();
-        //匹配分
-        for i in 0..target.len() {
-            if out_bytes.len()>i{
-                fitness += 255.0 - (out_bytes[i] as f64 - target[i] as f64).abs();
-            }
-            //输出短于target, 减分
-        }
-        if out_bytes.len()>target.len(){
-            //超出target的, 减分
-            for _ in target.len()..out_bytes.len(){
-                fitness -= 5.0;
-            }
-        }
-    }else{
-        fitness -= 255.0*target.len() as f64;
-    }
-
-    //执行时间越短， 适应分越高
-    fitness -= pbrain.instruction_count() as f64 / 500.0;
-
-    //指令越多适应分越低
-    fitness -= program.len() as f64/10.0;
-
-    fitness
-}
-
 fn main() {
+
+    let fitness = PrintFitnessFunction::new("Hi!");
+    let fitness = SortFitness::new();
+    
     let mut ga = GA::new(Params{
         chromo_length: INITIAL_GENOME_SIZE,
         crossover_rate: CROSSOVER_RATE,
@@ -79,14 +47,15 @@ fn main() {
         num_elite: NUM_ELITE,
         num_thread: NUM_THREAD,
         pop_size: POPULATION_SIZE,
+        fitness_calc: Box::new(fitness.clone())
     });
     let start_time = Instant::now();
     let mut counter = Instant::now();
     let mut generations = 0;
     while {
-        let out = ga.get_chromos()[0].get_output();
-        if out == TARGET{
+        if fitness.is_fitness_achieved(&ga.get_chromos()[0]){
             let elapsed_ms = duration_to_milis(&start_time.elapsed());
+            let out = fitness.get_output(&ga.get_chromos()[0]);
             println!("generations={} 最终程序:{} 适应分:{} 结果:{} 耗时:{}ms", generations, ga.get_chromos()[0].to_program(), ga.get_chromos()[0].fitness, out, elapsed_ms);
             false
         }else{
@@ -99,7 +68,7 @@ fn main() {
         if elapsed_ms>=1000.0{
             counter = Instant::now();
             let chromos = ga.get_chromos();
-            let out = chromos[0].get_output();
+            let out = fitness.get_output(&chromos[0]);
             println!("人口:{} 代数:{} 平均分:{} 最高分:{} out={:?} program={}", chromos.len(), generations, ga.get_average_fitness(), chromos[0].fitness, out, chromos[0].to_program());
         }
     }
