@@ -6,6 +6,8 @@ mod fitness;
 use std::time::{Duration, Instant};
 use fitness::hello::PrintFitnessFunction;
 use fitness::reverse::RevertStringFitness;
+use fitness::addition::AddFitness;
+use fitness::sort::SortFitness;
 use ga::{GA, Params, CalcFitness};
 
 /*
@@ -23,9 +25,8 @@ AI程序的工作原理如下:
 用新一代重复该过程，直到达到目标适应分数。
 */
 
-//const INSTRUCTION_SET:[char; 11] = ['>', '<', '+', '-', '.', ',', '[', ']', '(', ')', ':'];
-//const INSTRUCTION_SET:[char; 9] = ['>', '<', '.', ',', '[', ']', '(', ')', ':'];
-const INSTRUCTION_SET:[char; 8] = ['>', '<', '+', '-', '.', ',', '[', ']'];
+const INSTRUCTION_SET:[char; 11] = ['>', '<', '+', '-', '.', ',', '[', ']', '(', ')', ':'];
+//const INSTRUCTION_SET:[char; 8] = ['>', '<', '+', '-', '.', ',', '[', ']'];
 const MUTATION_RATE: f64 = 0.02;//0.05~0.3
 const CROSSOVER_RATE: f64 = 0.6;//0.7
 const INITIAL_GENOME_SIZE: usize = 200;
@@ -37,7 +38,9 @@ const POPULATION_SIZE: usize = 30*NUM_THREAD+NUM_ELITE*NUM_COPIES_ELITE;//人口
 fn main() {
 
     //let fitness = PrintFitnessFunction::new("Hi!");
-    let fitness = RevertStringFitness::new();
+    //let fitness = RevertStringFitness::new();
+    //let fitness = AddFitness::new();
+    let fitness = SortFitness::new();
     
     let mut ga = GA::new(Params{
         chromo_length: INITIAL_GENOME_SIZE,
