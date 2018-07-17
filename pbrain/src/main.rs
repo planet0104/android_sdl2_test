@@ -4,8 +4,8 @@ mod pbrain;
 mod ga;
 mod fitness;
 use std::time::{Duration, Instant};
-use fitness::PrintFitnessFunction;
-use fitness::SortFitness;
+use fitness::hello::PrintFitnessFunction;
+use fitness::reverse::RevertStringFitness;
 use ga::{GA, Params, CalcFitness};
 
 /*
@@ -24,7 +24,8 @@ AI程序的工作原理如下:
 */
 
 //const INSTRUCTION_SET:[char; 11] = ['>', '<', '+', '-', '.', ',', '[', ']', '(', ')', ':'];
-const INSTRUCTION_SET:[char; 9] = ['>', '<', '.', ',', '[', ']', '(', ')', ':'];
+//const INSTRUCTION_SET:[char; 9] = ['>', '<', '.', ',', '[', ']', '(', ')', ':'];
+const INSTRUCTION_SET:[char; 8] = ['>', '<', '+', '-', '.', ',', '[', ']'];
 const MUTATION_RATE: f64 = 0.02;//0.05~0.3
 const CROSSOVER_RATE: f64 = 0.6;//0.7
 const INITIAL_GENOME_SIZE: usize = 200;
@@ -32,12 +33,11 @@ const NUM_ELITE: usize = 3;//精英选择个数
 const NUM_COPIES_ELITE: usize = 2; //每个精英复制数
 const NUM_THREAD: usize = 8;//线程数
 const POPULATION_SIZE: usize = 30*NUM_THREAD+NUM_ELITE*NUM_COPIES_ELITE;//人口数量
-const MAX_ITERATION_COUNT:u64 = 1000;
 
 fn main() {
 
-    let fitness = PrintFitnessFunction::new("Hi!");
-    let fitness = SortFitness::new();
+    //let fitness = PrintFitnessFunction::new("Hi!");
+    let fitness = RevertStringFitness::new();
     
     let mut ga = GA::new(Params{
         chromo_length: INITIAL_GENOME_SIZE,
@@ -65,11 +65,15 @@ fn main() {
         ga.epoch();
         generations += 1;
         let elapsed_ms = duration_to_milis(&counter.elapsed());
-        if elapsed_ms>=1000.0{
+        if elapsed_ms>=2000.0{
             counter = Instant::now();
             let chromos = ga.get_chromos();
-            let out = fitness.get_output(&chromos[0]);
-            println!("人口:{} 代数:{} 平均分:{} 最高分:{} out={:?} program={}", chromos.len(), generations, ga.get_average_fitness(), chromos[0].fitness, out, chromos[0].to_program());
+            println!("人口:{} 代数:{} 平均分:{}", chromos.len(), generations, ga.get_average_fitness());
+            let num_elite = NUM_ELITE*NUM_COPIES_ELITE;
+            for i in num_elite..num_elite+2{
+                println!("fitness={}, out={:?} program={}", chromos[i].fitness, fitness.get_output(&chromos[i]), chromos[i].to_program());
+            }
+            println!("------------------");
         }
     }
 }
