@@ -1,0 +1,8 @@
+[package]
+name = "tenprint"
+version = "0.1.0"
+authors = ["planet0104 <planet0104@gmail.com>"]
+
+[dependencies]
+brainfuck_rs = "1.1.1"
+rand = "0.5.3"
