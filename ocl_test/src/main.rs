@@ -1,115 +1,77 @@
-extern crate ocl;
+use rand::Rng;
 use ocl::ProQue;
 use std::time::{Duration, Instant};
-extern crate rand;
-use rand::{thread_rng, Rng};
-use ocl::Platform;
-use ocl::enums::PlatformInfo;
 
-//测试
-const SIZE:usize = 45000000 * 1;
+//dll转lib
+//.\pexports.exe C:\Windows\SysWOW64\opencl.dll >opencl.def
+//.\lib.exe /def:C:\Users\JiaYe\vcpkg\downloads\tools\perl\c\bin\opencl.def /machine:X64
 
-fn check_prime_gpu(pro_que: &ProQue, array:&Vec<f32>, result: &mut Vec<f32>) -> ocl::Result<()> {
-    let buffer = pro_que.create_buffer::<f32>()?;
-    buffer.cmd().write(array).enq().unwrap();
-
-    let kernel = pro_que.kernel_builder("div")
-        .arg(&buffer)
-        .build()?;
-
-    unsafe { kernel.enq()?; }
-    buffer.read(result).enq()?;
-    Ok(())
-}
+const SIZE:usize = 200_000_000;
 
 fn main(){
+    println!("数组大小:{}", SIZE);
+    let start_time = Instant::now();
+    let mut m_array = vec![];
+    let mut a_array = vec![];
+
+    let mut rng = rand::thread_rng();
+    for _ in 0..SIZE{
+        m_array.push(rng.gen::<f32>());
+        a_array.push(rng.gen::<f32>());
+    }
+    println!("数组始化完成. 耗时{}ms", duration_to_milis(&start_time.elapsed()));
+
+    //cpu
+    let start_time = Instant::now();
+    let mut total = 0;
+    for i in 0..SIZE{
+        total += m_array[i].log(a_array[i]) as i64;
+    }
+    println!("CPU计算完成. 总和:{} 耗时{}ms", total, duration_to_milis(&start_time.elapsed()));
+
+    let start_time = Instant::now();
     let src = r#"
-        __kernel void div(__global float* buffer) {
-            int gid = get_global_id(0);
-            int n = (int)buffer[gid];
-            if (n <= 3) {
-                if (n>1){
-                    buffer[gid] = 1.0;
-                }else{
-                    buffer[gid] = 0.0;
-                }
-            } else if (n % 2 == 0 || n % 3 == 0) {
-                buffer[gid] = 0.0;
-            } else {
-                int i = 5;
-                while (i*i <= n){
-                    if (n % i == 0 || n % (i + 2) == 0) {
-                        buffer[gid] = 0.0;
-                        return;
-                    }
-                    i += 6;
-                }
-                buffer[gid] = 1.0;
-            }
+        __kernel void count(__global const float* m, __global const float* a, __global float* result) {
+            int idx = get_global_id(0);
+            result[idx] = log(m[idx])/log(a[idx]);
         }
     "#;
-
-    let platforms = Platform::list();
-    for p in platforms{
-        println!("设备: {:?}", p.info(PlatformInfo::Version));
-    }
 
     let pro_que = ProQue::builder()
         .src(src)
         .dims(SIZE)
         .build().unwrap();
+    println!("ProQue创建完成. 耗时{}ms", duration_to_milis(&start_time.elapsed()));
 
-    println!("max_wg_size={:?}", pro_que.max_wg_size());
-
-    //随机生成一个质数数组
-    let mut rng = thread_rng();
     let start_time = Instant::now();
-    let mut numbers:Vec<f32> = vec![];
-    for _ in 0..SIZE{
-        numbers.push(rng.gen_range(100000, 1001000) as f32);
-    }
-    let mut result = vec![0.0; SIZE];
-    println!("生成数组 耗时:{}ms", duration_to_milis(&start_time.elapsed()));
-    //println!("{:?}", numbers);
-    //下面代码判断数组中的数是否是质数，如果是质数将对应位置设置为1，否则设置为0
+    let buffer_m = pro_que.create_buffer::<f32>().unwrap();
+    buffer_m.cmd().write(&m_array).enq().unwrap();
+    let buffer_a = pro_que.create_buffer::<f32>().unwrap();
+    buffer_a.cmd().write(&a_array).enq().unwrap();
+    let buffer_result = pro_que.create_buffer::<f32>().unwrap();
 
-    //cpu判断是否是质数
+    println!("buffer创建完成. 耗时{}ms", duration_to_milis(&start_time.elapsed()));
+
     let start_time = Instant::now();
-    check_prime_cpu(&mut numbers, &mut result);
-    println!("{:?} 耗时:{}ms", result.get(0..5), duration_to_milis(&start_time.elapsed()));
-    
-    //gpu判断是否质数
+    let kernel = pro_que.kernel_builder("count")
+    .arg(&buffer_m)
+    .arg(&buffer_a)
+    .arg(&buffer_result)
+    .build().unwrap();
+
+    unsafe { kernel.enq().unwrap(); }
+
+    let mut result:Vec<f32> = vec![0.0; SIZE];
+    buffer_result.read(&mut result).enq().unwrap();
+
+    println!("GPU计算完成. 耗时{}ms", duration_to_milis(&start_time.elapsed()));
+
     let start_time = Instant::now();
-    check_prime_gpu(&pro_que, &mut numbers, &mut result).unwrap();
-    println!("{:?} 耗时:{}ms", result.get(0..5), duration_to_milis(&start_time.elapsed()));
-}
-
-fn check_prime_cpu(array:&Vec<f32>, result: &mut Vec<f32>){
-    for i in 0..array.len(){
-        result[i] = if is_prime(array[i] as u32){
-            1.0
-        }else{
-            0.0
-        };
+    let mut total = 0;
+    for c in result{
+        total += c as i64;
     }
-}
-
-//判断是否是质数
-fn is_prime(n: u32) -> bool{
-    if n <= 3 {
-        return n > 1;
-    } else if n % 2 == 0 || n % 3 == 0 {
-        return false;
-    } else {
-        let mut i = 5;
-        while i*i <= n{
-            if n % i == 0 || n % (i + 2) == 0 {
-                return false;
-            }
-            i += 6;
-        }
-        return true;
-    }
+    println!("统计完成. 总和:{} 耗时{}ms", total, duration_to_milis(&start_time.elapsed()));
 }
 
 pub fn duration_to_milis(duration: &Duration) -> f64 {

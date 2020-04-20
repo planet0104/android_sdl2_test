@@ -2,7 +2,9 @@
 name = "rust_test"
 version = "0.1.0"
 authors = ["days888"]
+edition = "2018"
 
 [dependencies]
-ocl = "0.18"
-rand = "*"
+ocl = "0.19.3"
+rand = "0.7.0"
+num_cpus = "1.10.1"
